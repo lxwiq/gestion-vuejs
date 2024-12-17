@@ -1,5 +1,10 @@
 @import './base.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Supprimez ou commentez le reste du contenu par défaut */
+/*
 #app {
   max-width: 1280px;
   margin: 0 auto;
@@ -33,3 +38,4 @@ a,
     padding: 0 2rem;
   }
 }
+*/
