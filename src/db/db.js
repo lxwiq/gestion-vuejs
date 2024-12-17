@@ -2,9 +2,9 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('projectManagementDB');
 
-db.version(1).stores({
-  users: '++id, email, password, roles', // roles sera un array ['developer', 'manager']
-  projects: '++id, name, description, createdAt, managedBy, status',
+db.version(2).stores({
+  users: '++id, email, password, roles',
+  projects: 'id, name, description, createdAt, status',
   tasks: '++id, projectId, title, description, status, assignedTo, createdAt, deadline, priority',
   comments: '++id, taskId, userId, content, createdAt'
 });

@@ -22,20 +22,29 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Créer un nouveau projet
   async function createProject(projectData) {
-    const newProject = {
-      name: projectData.name,
-      description: projectData.description,
-      startDate: projectData.startDate,
-      endDate: projectData.endDate,
-      status: projectData.status,
-      priority: projectData.priority,
-      createdAt: new Date().toISOString(),
-      managedBy: [authStore.currentUser.id],
-    };
+    try {
+      const newProject = {
+        id: crypto.randomUUID(),
+        name: projectData.name,
+        description: projectData.description,
+        startDate: new Date(projectData.startDate).toISOString(),
+        endDate: new Date(projectData.endDate).toISOString(),
+        status: projectData.status || 'active',
+        priority: projectData.priority || 'medium',
+        assignedDevelopers: Array.from(projectData.assignedDevelopers || []),
+        managedBy: [],
+        createdAt: new Date().toISOString()
+      };
 
-    const id = await db.projects.add(newProject);
-    await fetchProjects();
-    return id;
+      const projectToStore = JSON.parse(JSON.stringify(newProject));
+
+      await db.projects.add(projectToStore);
+      await fetchProjects();
+      return newProject.id;
+    } catch (error) {
+      console.error('Erreur lors de la création du projet:', error);
+      throw error;
+    }
   }
 
   // Modifier un projet
@@ -150,36 +159,39 @@ export const useProjectStore = defineStore('projects', () => {
   // Ajouter une nouvelle fonction pour charger toutes les tâches d'un développeur
   async function fetchDeveloperTasks(developerId) {
     try {
-      // Récupérer d'abord toutes les tâches assignées au développeur
-      const allTasks = await db.tasks
+      console.log('Chargement des tâches pour le développeur:', developerId);
+
+      // Récupérer tous les projets
+      const allProjects = await db.projects.toArray();
+
+      // Filtrer les projets après les avoir récupérés
+      const developerProjects = allProjects.filter(project =>
+        project.assignedDevelopers &&
+        Array.isArray(project.assignedDevelopers) &&
+        project.assignedDevelopers.includes(developerId)
+      );
+
+      console.log('Projets trouvés:', developerProjects);
+      projects.value = developerProjects;
+
+      // Récupérer toutes les tâches assignées au développeur
+      const developerTasks = await db.tasks
         .where('assignedTo')
         .equals(developerId)
         .toArray();
 
-      // Récupérer les IDs uniques des projets
-      const projectIds = [...new Set(allTasks.map(task => task.projectId))];
+      console.log('Tâches trouvées:', developerTasks);
+      tasks.value = developerTasks;
 
-      // Si le développeur a des tâches, récupérer les projets correspondants
-      if (projectIds.length > 0) {
-        const projectsData = await db.projects
-          .where('id')
-          .anyOf(projectIds)
-          .toArray();
-        projects.value = projectsData;
-      } else {
-        // Si aucune tâche n'est assignée, récupérer tous les projets actifs
-        projects.value = await db.projects
-          .where('status')
-          .equals('active')
-          .toArray();
-      }
-
-      // Mettre à jour l'état des tâches
-      tasks.value = allTasks;
+      return {
+        projects: developerProjects,
+        tasks: developerTasks
+      };
     } catch (error) {
-      console.error('Erreur lors de la récupération des tâches du développeur:', error);
+      console.error('Erreur lors de la récupération des données:', error);
       projects.value = [];
       tasks.value = [];
+      throw error;
     }
   }
 

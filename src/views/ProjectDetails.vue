@@ -245,6 +245,49 @@ async function handleCompleteTask(taskId) {
     alert(error.message);
   }
 }
+
+// Ajout de nouveaux états pour la gestion des tâches
+const selectedTask = ref(null);
+const showTaskDetails = ref(false);
+
+// Fonction pour ouvrir les détails d'une tâche
+function openTaskDetails(task) {
+  selectedTask.value = { ...task };
+  showTaskDetails.value = true;
+  loadTaskComments(task.id);
+}
+
+// Fonction pour obtenir le statut formaté
+function getStatusLabel(status) {
+  const statusLabels = {
+    'pending': 'En attente',
+    'in_progress': 'En cours',
+    'completed': 'Terminée',
+    'validated': 'Validée'
+  };
+  return statusLabels[status] || status;
+}
+
+// Fonction pour obtenir la classe de couleur selon le statut
+function getStatusClass(status) {
+  const statusClasses = {
+    'pending': 'bg-gray-100 text-gray-800',
+    'in_progress': 'bg-yellow-100 text-yellow-800',
+    'completed': 'bg-blue-100 text-blue-800',
+    'validated': 'bg-green-100 text-green-800'
+  };
+  return statusClasses[status] || 'bg-gray-100 text-gray-800';
+}
+
+// Fonction pour vérifier si l'utilisateur peut modifier une tâche
+const canEditTask = computed(() => {
+  return isProjectManager.value || isDeveloper.value;
+});
+
+// Fonction pour vérifier si l'utilisateur peut valider une tâche
+const canValidateTask = computed(() => {
+  return isProjectManager.value;
+});
 </script>
 
 <template>
@@ -385,11 +428,11 @@ async function handleCompleteTask(taskId) {
         </div>
       </div>
 
-      <!-- Gestion des tâches -->
+      <!-- Section des tâches -->
       <div class="bg-white shadow-sm rounded-lg">
-        <div class="border-b border-gray-200">
-          <div class="px-6 py-4 flex justify-between items-center">
-            <h3 class="text-lg font-medium text-gray-900">Tâches</h3>
+        <div class="px-6 py-4">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Tâches du projet</h3>
             <button
               v-if="canCreateTask"
               @click="showNewTaskForm = true"
@@ -401,50 +444,43 @@ async function handleCompleteTask(taskId) {
               Nouvelle tâche
             </button>
           </div>
-        </div>
 
-        <!-- Filtres des tâches -->
-        <div class="mb-4 flex space-x-2">
-          <button
-            v-for="(label, filter) in filterLabels"
-            :key="filter"
-            @click="taskFilter = filter"
-            :class="[
-              'px-3 py-2 rounded-md text-sm font-medium',
-              taskFilter === filter
-                ? 'bg-indigo-100 text-indigo-700'
-                : 'text-gray-500 hover:bg-gray-100'
-            ]"
-          >
-            {{ label }}
-          </button>
-        </div>
+          <!-- Filtres des tâches -->
+          <div class="flex space-x-2 mb-4">
+            <button
+              v-for="(label, filter) in filterLabels"
+              :key="filter"
+              @click="taskFilter = filter"
+              :class="[
+                'px-3 py-2 rounded-md text-sm font-medium',
+                taskFilter === filter
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-gray-500 hover:bg-gray-100'
+              ]"
+            >
+              {{ label }}
+            </button>
+          </div>
 
-        <div class="divide-y divide-gray-200">
-          <div
-            v-for="task in filteredTasks"
-            :key="task.id"
-            :class="[
-              'px-6 py-4 hover:bg-gray-50',
-              new Date(task.deadline) < new Date() && task.status !== 'validated' ? 'bg-red-50' : ''
-            ]"
-          >
-            <div class="flex items-center justify-between">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center space-x-3">
-                  <div
-                    :class="{
-                      'bg-gray-100': task.status === 'pending',
-                      'bg-yellow-100': task.status === 'in_progress',
-                      'bg-green-100': task.status === 'validated'
-                    }"
-                    class="flex-shrink-0 w-2.5 h-2.5 rounded-full"
-                  ></div>
-                  <h4 class="text-sm font-medium text-gray-900">{{ task.title }}</h4>
-                </div>
-                <div class="mt-2">
-                  <p class="text-sm text-gray-500">{{ task.description }}</p>
-                  <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+          <!-- Liste des tâches -->
+          <div class="space-y-4">
+            <div
+              v-for="task in filteredTasks"
+              :key="task.id"
+              class="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
+              @click="openTaskDetails(task)"
+            >
+              <div class="flex justify-between items-start">
+                <div>
+                  <h4 class="font-medium text-gray-900">{{ task.title }}</h4>
+                  <p class="mt-1 text-sm text-gray-500">{{ task.description }}</p>
+                  <div class="mt-2 flex items-center space-x-4">
+                    <span
+                      :class="getStatusClass(task.status)"
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    >
+                      {{ getStatusLabel(task.status) }}
+                    </span>
                     <span
                       :class="{
                         'bg-yellow-100 text-yellow-800': task.priority === 'medium',
@@ -455,73 +491,104 @@ async function handleCompleteTask(taskId) {
                     >
                       {{ task.priority }}
                     </span>
-                    <span>Échéance: {{ new Date(task.deadline).toLocaleDateString() }}</span>
+                    <span class="text-sm text-gray-500">
+                      Échéance: {{ new Date(task.deadline).toLocaleDateString() }}
+                    </span>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm text-gray-500">
+                    Assignée à: {{ getDeveloperEmail(task.assignedTo) }}
+                  </span>
+                  <div v-if="canEditTask" class="flex space-x-2">
+                    <button
+                      v-if="isProjectManager"
+                      @click.stop="startEditTask(task)"
+                      class="text-indigo-600 hover:text-indigo-900"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      v-if="isProjectManager"
+                      @click.stop="handleDeleteTask(task.id)"
+                      class="text-red-600 hover:text-red-900"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
-              <div v-if="isProjectManager" class="ml-4 flex items-center space-x-4">
-                <select
-                  v-model="task.assignedTo"
-                  @change="handleAssignTask(task.id, $event.target.value)"
-                  class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                >
-                  <option value="">Non assigné</option>
-                  <option
-                    v-for="user in users.filter(u => u.roles.includes('developer'))"
-                    :key="user.id"
-                    :value="user.id"
-                  >
-                    {{ user.email }}
-                  </option>
-                </select>
-                <button
-                  v-if="task.status !== 'validated'"
-                  @click="handleValidateTask(task.id)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-green-600 hover:bg-green-700"
-                >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                </button>
-                <button
-                  @click="handleDeleteTask(task.id)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-red-600 hover:bg-red-700"
-                >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <button
-                  v-if="isProjectManager"
-                  @click="startEditTask(task)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
+            </div>
+          </div>
+
+          <!-- Message si aucune tâche -->
+          <div v-if="filteredTasks.length === 0" class="text-center py-12">
+            <p class="text-gray-500">Aucune tâche ne correspond aux critères sélectionnés.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal des détails de tâche -->
+      <div v-if="showTaskDetails" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-2xl w-full mx-4">
+          <div class="px-6 py-4">
+            <div class="flex justify-between items-start">
+              <h3 class="text-lg font-medium text-gray-900">{{ selectedTask.title }}</h3>
+              <button @click="showTaskDetails = false" class="text-gray-400 hover:text-gray-500">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div class="mt-4 space-y-4">
+              <p class="text-gray-500">{{ selectedTask.description }}</p>
+              <div class="flex items-center space-x-4">
+                <span :class="getStatusClass(selectedTask.status)" class="px-2.5 py-0.5 rounded-full text-xs font-medium">
+                  {{ getStatusLabel(selectedTask.status) }}
+                </span>
+                <span class="text-sm text-gray-500">
+                  Échéance: {{ new Date(selectedTask.deadline).toLocaleDateString() }}
+                </span>
               </div>
-              <!-- Actions pour les développeurs -->
-              <div v-if="isDeveloper && task.assignedTo === authStore.currentUser?.id" class="mt-4 flex space-x-4">
-                <button
-                  v-if="task.status !== 'completed' && task.status !== 'validated'"
-                  @click="handleCompleteTask(task.id)"
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
-                >
-                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Marquer comme terminée
-                </button>
-                <button
-                  @click="openCommentForm(task)"
-                  class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  Commenter
-                </button>
+
+              <!-- Commentaires -->
+              <div class="mt-6">
+                <h4 class="font-medium text-gray-900 mb-4">Commentaires</h4>
+                <div class="space-y-4">
+                  <div v-for="comment in taskComments" :key="comment.id" class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between">
+                      <span class="text-sm font-medium text-gray-900">
+                        {{ getDeveloperEmail(comment.userId) }}
+                      </span>
+                      <span class="text-sm text-gray-500">
+                        {{ new Date(comment.createdAt).toLocaleString() }}
+                      </span>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">{{ comment.content }}</p>
+                  </div>
+                </div>
+
+                <!-- Formulaire de nouveau commentaire -->
+                <div class="mt-4">
+                  <textarea
+                    v-model="newComment"
+                    rows="3"
+                    class="shadow-sm block w-full focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                    placeholder="Ajouter un commentaire..."
+                  ></textarea>
+                  <div class="mt-2 flex justify-end">
+                    <button
+                      @click="handleAddComment"
+                      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Commenter
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

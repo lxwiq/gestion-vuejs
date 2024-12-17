@@ -2,22 +2,38 @@
 import { ref, onMounted, computed } from 'vue';
 import { useProjectStore } from '../stores/projects';
 import { useAuthStore } from '../stores/auth';
+import { db } from '../db/db';
 
 const projectStore = useProjectStore();
 const authStore = useAuthStore();
 
 const showNewProjectForm = ref(false);
+const developers = ref([]);
 const newProject = ref({
   name: '',
   description: '',
   startDate: '',
   endDate: '',
   status: 'active',
-  priority: 'medium'
+  priority: 'medium',
+  assignedDevelopers: []
 });
-
+console.log('ik');
 onMounted(async () => {
-  await projectStore.fetchProjects();
+  try {
+    console.log('Début du chargement des projets');
+    await projectStore.fetchProjects();
+    console.log('Projets chargés:', projectStore.projects);
+    const dev = await db.users
+      .orderBy('email')
+      .toArray()
+      .then(users => users.filter(user => user.roles.includes('developer')));
+    console.log(dev);
+
+    developers.value = dev;
+  } catch (error) {
+    console.error('Erreur lors du chargement:', error);
+  }
 });
 
 const isManager = computed(() => {
@@ -26,11 +42,21 @@ const isManager = computed(() => {
 
 async function handleCreateProject() {
   try {
-    if (new Date(newProject.value.endDate) < new Date(newProject.value.startDate)) {
+    const startDate = new Date(newProject.value.startDate).toISOString();
+    const endDate = new Date(newProject.value.endDate).toISOString();
+
+    if (new Date(endDate) < new Date(startDate)) {
       throw new Error('La date de fin doit être postérieure à la date de début');
     }
 
-    await projectStore.createProject(newProject.value);
+    const projectData = {
+      ...newProject.value,
+      startDate,
+      endDate,
+      assignedDevelopers: newProject.value.assignedDevelopers
+    };
+
+    await projectStore.createProject(projectData);
     showNewProjectForm.value = false;
     newProject.value = {
       name: '',
@@ -38,7 +64,8 @@ async function handleCreateProject() {
       startDate: '',
       endDate: '',
       status: 'active',
-      priority: 'medium'
+      priority: 'medium',
+      assignedDevelopers: []
     };
   } catch (error) {
     alert(error.message);
@@ -134,6 +161,40 @@ async function handleToggleManager(projectId) {
                 <option value="medium">Moyenne</option>
                 <option value="high">Haute</option>
               </select>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              Assigner des développeurs
+            </label>
+            <div class="mt-2 border rounded-md divide-y">
+              <div
+                v-for="dev in developers"
+                :key="dev.id"
+                class="flex items-center p-3 hover:bg-gray-50"
+              >
+                <input
+                  type="checkbox"
+                  :id="'dev-' + dev.id"
+                  :value="dev.id"
+                  v-model="newProject.assignedDevelopers"
+                  class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                >
+                <label :for="'dev-' + dev.id" class="ml-3 flex flex-col">
+                  <span class="text-sm font-medium text-gray-700">
+                    {{ dev.firstName }} {{ dev.lastName }}
+                  </span>
+                  <span class="text-sm text-gray-500">{{ dev.email }}</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Résumé des sélections -->
+            <div v-if="newProject.assignedDevelopers.length > 0" class="mt-2">
+              <p class="text-sm text-gray-500">
+                {{ newProject.assignedDevelopers.length }} développeur(s) sélectionné(s)
+              </p>
             </div>
           </div>
 
