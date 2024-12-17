@@ -149,21 +149,69 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Ajouter une nouvelle fonction pour charger toutes les tâches d'un développeur
   async function fetchDeveloperTasks(developerId) {
-    // Récupérer d'abord toutes les tâches
-    const allTasks = await db.tasks.where('assignedTo').equals(developerId).toArray();
+    try {
+      // Récupérer d'abord toutes les tâches assignées au développeur
+      const allTasks = await db.tasks
+        .where('assignedTo')
+        .equals(developerId)
+        .toArray();
 
-    // Récupérer les IDs uniques des projets
-    const projectIds = [...new Set(allTasks.map(task => task.projectId))];
+      // Récupérer les IDs uniques des projets
+      const projectIds = [...new Set(allTasks.map(task => task.projectId))];
 
-    // Récupérer les projets correspondants
-    const projectsData = await db.projects
-      .where('id')
-      .anyOf(projectIds)
-      .toArray();
+      // Si le développeur a des tâches, récupérer les projets correspondants
+      if (projectIds.length > 0) {
+        const projectsData = await db.projects
+          .where('id')
+          .anyOf(projectIds)
+          .toArray();
+        projects.value = projectsData;
+      } else {
+        // Si aucune tâche n'est assignée, récupérer tous les projets actifs
+        projects.value = await db.projects
+          .where('status')
+          .equals('active')
+          .toArray();
+      }
 
-    // Mettre à jour l'état
-    projects.value = projectsData;
-    tasks.value = allTasks;
+      // Mettre à jour l'état des tâches
+      tasks.value = allTasks;
+    } catch (error) {
+      console.error('Erreur lors de la récupération des tâches du développeur:', error);
+      projects.value = [];
+      tasks.value = [];
+    }
+  }
+
+  // Ajouter un commentaire à une tâche
+  async function addComment(taskId, content) {
+    const comment = {
+      taskId,
+      userId: authStore.currentUser.id,
+      content,
+      createdAt: new Date().toISOString()
+    };
+
+    await db.comments.add(comment);
+    return comment;
+  }
+
+  // Récupérer les commentaires d'une tâche
+  async function fetchTaskComments(taskId) {
+    return await db.comments
+      .where('taskId')
+      .equals(taskId)
+      .reverse()
+      .sortBy('createdAt');
+  }
+
+  // Marquer une tâche comme complétée (pour les développeurs)
+  async function completeTask(taskId) {
+    const task = await db.tasks.get(taskId);
+    if (task.assignedTo !== authStore.currentUser.id) {
+      throw new Error('Vous ne pouvez pas marquer cette tâche comme complétée');
+    }
+    await updateTask(taskId, { status: 'completed' });
   }
 
   return {
@@ -182,6 +230,9 @@ export const useProjectStore = defineStore('projects', () => {
     assignTask,
     validateTask,
     getProjectStats,
-    fetchDeveloperTasks
+    fetchDeveloperTasks,
+    addComment,
+    fetchTaskComments,
+    completeTask
   };
 });

@@ -193,6 +193,58 @@ function getTaskStatus(task) {
   if (task.assignedTo) return 'in_progress';
   return 'pending';
 }
+
+// Vérifier si l'utilisateur est développeur
+const isDeveloper = computed(() => {
+  return authStore.currentUser?.roles.includes('developer');
+});
+
+// Vérifier si l'utilisateur peut créer des tâches
+const canCreateTask = computed(() => {
+  return isProjectManager.value || isDeveloper.value;
+});
+
+// Vérifier si l'utilisateur peut voir toutes les tâches du projet
+const canViewAllTasks = computed(() => {
+  return isProjectManager.value || isDeveloper.value;
+});
+
+// État pour les commentaires
+const showCommentForm = ref(false);
+const selectedTaskForComment = ref(null);
+const newComment = ref('');
+const taskComments = ref([]);
+
+// Charger les commentaires d'une tâche
+async function loadTaskComments(taskId) {
+  taskComments.value = await projectStore.fetchTaskComments(taskId);
+}
+
+// Gérer l'ajout d'un commentaire
+async function handleAddComment() {
+  if (!newComment.value.trim()) return;
+
+  await projectStore.addComment(selectedTaskForComment.value.id, newComment.value);
+  await loadTaskComments(selectedTaskForComment.value.id);
+  newComment.value = '';
+}
+
+// Ouvrir le formulaire de commentaire
+function openCommentForm(task) {
+  selectedTaskForComment.value = task;
+  showCommentForm.value = true;
+  loadTaskComments(task.id);
+}
+
+// Marquer une tâche comme complétée
+async function handleCompleteTask(taskId) {
+  try {
+    await projectStore.completeTask(taskId);
+    await projectStore.fetchProjectTasks(project.value.id);
+  } catch (error) {
+    alert(error.message);
+  }
+}
 </script>
 
 <template>
@@ -339,7 +391,7 @@ function getTaskStatus(task) {
           <div class="px-6 py-4 flex justify-between items-center">
             <h3 class="text-lg font-medium text-gray-900">Tâches</h3>
             <button
-              v-if="isProjectManager"
+              v-if="canCreateTask"
               @click="showNewTaskForm = true"
               class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
             >
@@ -447,6 +499,28 @@ function getTaskStatus(task) {
                   <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
+                </button>
+              </div>
+              <!-- Actions pour les développeurs -->
+              <div v-if="isDeveloper && task.assignedTo === authStore.currentUser?.id" class="mt-4 flex space-x-4">
+                <button
+                  v-if="task.status !== 'completed' && task.status !== 'validated'"
+                  @click="handleCompleteTask(task.id)"
+                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                >
+                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Marquer comme terminée
+                </button>
+                <button
+                  @click="openCommentForm(task)"
+                  class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  Commenter
                 </button>
               </div>
             </div>
@@ -639,6 +713,69 @@ function getTaskStatus(task) {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Modal des commentaires -->
+      <div
+        v-if="showCommentForm && selectedTaskForComment"
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center"
+      >
+        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+              <h3 class="text-lg font-medium text-gray-900">
+                Commentaires - {{ selectedTaskForComment.title }}
+              </h3>
+              <button
+                @click="showCommentForm = false"
+                class="text-gray-400 hover:text-gray-500"
+              >
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 max-h-96 overflow-y-auto">
+            <div class="space-y-4">
+              <div
+                v-for="comment in taskComments"
+                :key="comment.id"
+                class="bg-gray-50 rounded-lg p-4"
+              >
+                <div class="flex justify-between items-start">
+                  <div class="text-sm text-gray-500">
+                    {{ users.find(u => u.id === comment.userId)?.email }}
+                  </div>
+                  <div class="text-xs text-gray-400">
+                    {{ new Date(comment.createdAt).toLocaleString() }}
+                  </div>
+                </div>
+                <div class="mt-2 text-gray-900">
+                  {{ comment.content }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-6 py-4 border-t border-gray-200">
+            <form @submit.prevent="handleAddComment" class="flex space-x-4">
+              <input
+                v-model="newComment"
+                type="text"
+                placeholder="Votre commentaire..."
+                class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              />
+              <button
+                type="submit"
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Envoyer
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
