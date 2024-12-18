@@ -30,7 +30,7 @@ const newTask = ref({
   deadline: '',
   priority: 'medium',
   assignedTo: '',
-  projectId: route.params.id,
+  projectId: Number(route.params.id),
   estimatedHours: 0,
   type: 'feature',
   status: 'pending',
@@ -95,11 +95,21 @@ async function handleCreateTask() {
       throw new Error('Veuillez assigner la tâche à un développeur');
     }
 
-    await projectStore.createTask({
+    // Vérifier que tous les champs requis sont présents
+    if (!newTask.value.title || !newTask.value.description || !newTask.value.deadline) {
+      throw new Error('Veuillez remplir tous les champs obligatoires');
+    }
+
+    // Créer une copie de la tâche avec le projectId converti en nombre
+    const taskToCreate = {
       ...newTask.value,
-      status: 'pending',
-      projectId: route.params.id
-    });
+      projectId: Number(route.params.id) // Conversion explicite en nombre
+    };
+
+    console.log('Données de la nouvelle tâche:', taskToCreate);
+
+    // Utiliser le store pour créer la tâche
+    await projectStore.createTask(taskToCreate);
 
     // Réinitialiser le formulaire
     newTask.value = {
@@ -120,7 +130,8 @@ async function handleCreateTask() {
     showNewTaskForm.value = false;
     await loadProjectData(); // Recharger les données du projet
   } catch (error) {
-    alert(error.message);
+    console.error('Erreur lors de la création de la tâche:', error);
+    alert(error.message || 'Erreur lors de la création de la tâche');
   }
 }
 
@@ -209,17 +220,39 @@ const developers = ref([]);
 
 // Charger la liste des développeurs
 async function fetchDevelopers() {
-  developers.value = await db.users
-    .filter(user => user.roles.includes('developer'))
-    .toArray();
+
+  console.log('Project value:', project.value);
+  console.log('Project developers:', project.value?.developers);
+
+  // Récupérer d'abord tous les développeurs
+  const allUsers = await db.users.toArray();
+
+  console.log('All users:', allUsers);
+
+  // Filtrer les développeurs du projet
+  /*developers.value = allUsers.filter(user =>
+    user.roles.includes('developer') &&
+    (project.value?.developer || []).includes(user.id)
+  );*/
+  developers.value = allUsers.filter(user =>
+    user.roles.includes('developer')
+  );
+
+  console.log('Filtered developers:', developers.value);
 }
 
-// Modifier la fonction onMounted pour charger les développeurs
+// Modifier la fonction onMounted pour s'assurer que le projet est chargé avant les développeurs
 onMounted(async () => {
-  const projectId = Number(route.params.id);
-  project.value = await db.projects.get(projectId);
-  await projectStore.fetchProjectTasks(projectId);
-  await fetchDevelopers();
+  try {
+    const projectId = Number(route.params.id);
+    project.value = await db.projects.get(projectId);
+    console.log('Loaded project:', project.value);
+
+    await projectStore.fetchProjectTasks(projectId);
+    await fetchDevelopers();
+  } catch (error) {
+    console.error('Error loading project data:', error);
+  }
 });
 
 // Fonction pour obtenir le nom du développeur assigné
@@ -365,6 +398,34 @@ function addSubtask() {
 // Fonction pour supprimer une sous-tâche
 function removeSubtask(index) {
   newTask.value.subtasks.splice(index, 1);
+}
+
+// Fonction pour ouvrir le formulaire de nouvelle tâche
+async function openNewTaskForm() {
+  try {
+    await fetchDevelopers();
+
+    // Réinitialiser le formulaire avec projectId en nombre
+    newTask.value = {
+      title: '',
+      description: '',
+      deadline: '',
+      priority: 'medium',
+      assignedTo: '',
+      projectId: Number(route.params.id), // Conversion en nombre
+      estimatedHours: 0,
+      type: 'feature',
+      status: 'pending',
+      dependencies: [],
+      tags: [],
+      subtasks: []
+    };
+
+    showNewTaskForm.value = true;
+  } catch (error) {
+    console.error('Error opening new task form:', error);
+    alert('Erreur lors de l\'ouverture du formulaire');
+  }
 }
 </script>
 
@@ -513,7 +574,7 @@ function removeSubtask(index) {
             <h3 class="text-lg font-medium text-gray-900">Tâches du projet</h3>
             <button
               v-if="canCreateTask"
-              @click="showNewTaskForm = true"
+              @click="openNewTaskForm"
               class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
             >
               <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -790,6 +851,20 @@ function removeSubtask(index) {
                   required
                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Assigner à</label>
+                <select
+                  v-model="newTask.assignedTo"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                  <option value="">Sélectionner un développeur</option>
+                  <option v-for="dev in developers" :key="dev.id" :value="dev.id">
+                    {{ dev.email }}
+                  </option>
+                </select>
               </div>
             </div>
 
