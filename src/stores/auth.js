@@ -89,25 +89,11 @@ export const useAuthStore = defineStore('auth', () => {
     router.push('/');
   }
 
-  async function fetchUsersByRole(role) {
-    try {
-      const users = await db.users
-        .where('roles')
-        .equals(role)
-        .toArray();
-      return users;
-    } catch (error) {
-      console.error('Erreur lors de la récupération des utilisateurs:', error);
-      return [];
-    }
-  }
-
   return {
     currentUser,
     isAuthenticated,
     register,
     login,
-    logout,
-    fetchUsersByRole
+    logout
   };
 });

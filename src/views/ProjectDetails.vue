@@ -28,7 +28,9 @@ const newTask = ref({
   title: '',
   description: '',
   deadline: '',
-  priority: 'medium'
+  priority: 'medium',
+  assignedTo: '',
+  projectId: route.params.id
 });
 
 // Récupérer les développeurs pour l'assignation
@@ -43,10 +45,21 @@ const isProjectManager = computed(() => {
 
 // Charger les données du projet et ses tâches
 async function loadProjectData() {
-  const projectId = Number(route.params.id);
-  project.value = await db.projects.get(projectId);
-  await projectStore.fetchProjectTasks(projectId);
-  await fetchUsers();
+  try {
+    // D'abord, récupérer le projet
+   // const projects = await projectStore.fetchProjects();
+    //console.log(projectStore.projects.find(p => p.id === route.params.id));
+    project.value = projectStore.projects.find(p => p.id === route.params.id);
+
+    if (!project.value) {
+      throw new Error('Projet non trouvé');
+    }
+
+    // Ensuite, récupérer les tâches du projet
+    await projectStore.fetchProjectTasks(route.params.id);
+  } catch (error) {
+    console.error('Erreur lors du chargement du projet:', error);
+  }
 }
 
 onMounted(loadProjectData);
@@ -72,12 +85,28 @@ async function handleDeleteProject() {
 // Gestion des tâches
 async function handleCreateTask() {
   try {
+    if (!newTask.value.assignedTo) {
+      throw new Error('Veuillez assigner la tâche à un développeur');
+    }
+
     await projectStore.createTask({
       ...newTask.value,
-      projectId: project.value.id
+      status: 'pending',
+      projectId: route.params.id
     });
+
+    // Réinitialiser le formulaire
+    newTask.value = {
+      title: '',
+      description: '',
+      deadline: '',
+      priority: 'medium',
+      assignedTo: '',
+      projectId: route.params.id
+    };
+
     showNewTaskForm.value = false;
-    newTask.value = { title: '', description: '', deadline: '', priority: 'medium' };
+    await loadProjectData(); // Recharger les données du projet
   } catch (error) {
     alert(error.message);
   }
@@ -288,6 +317,11 @@ const canEditTask = computed(() => {
 const canValidateTask = computed(() => {
   return isProjectManager.value;
 });
+
+// Fonction pour formater la date
+function formatDate(date) {
+  return new Date(date).toLocaleDateString();
+}
 </script>
 
 <template>

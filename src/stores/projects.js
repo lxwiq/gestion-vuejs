@@ -78,7 +78,24 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Récupérer les tâches d'un projet
   async function fetchProjectTasks(projectId) {
-    tasks.value = await db.tasks.where('projectId').equals(projectId).toArray();
+    try {
+      if (!projectId) {
+        console.error('ID du projet manquant');
+        return [];
+      }
+
+      const projectTasks = await db.tasks
+        .where('projectId')
+        .equals(projectId)
+        .toArray();
+
+      tasks.value = projectTasks;
+      return projectTasks;
+    } catch (error) {
+      console.error('Erreur lors du chargement des tâches:', error);
+      tasks.value = [];
+      return [];
+    }
   }
 
   // Créer une tâche
