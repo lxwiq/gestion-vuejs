@@ -5,7 +5,7 @@ export const db = new Dexie('projectManagementDB');
 db.version(4).stores({
   users: '++id, email, password, roles',
   projects: 'id, name, description, createdAt, status, managedBy, developers',
-  tasks: 'id, projectId, title, description, status, assignedTo, createdAt, updatedAt, deadline, priority, type, estimatedHours, dependencies, tags, subtasks',
+  tasks: 'id, taskId, projectId, title, description, status, assignedTo, createdAt, updatedAt,deadline, priority, type, estimatedHours, dependencies, tags, subtasks',
   comments: '++id, taskId, userId, content, createdAt'
 });
 

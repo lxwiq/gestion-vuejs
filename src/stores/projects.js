@@ -101,6 +101,7 @@ export const useProjectStore = defineStore('projects', () => {
   // Créer une tâche
   async function createTask(taskData) {
     const newTask = {
+      taskId: taskData.taskId,
       projectId: taskData.projectId,
       title: taskData.title,
       description: taskData.description,

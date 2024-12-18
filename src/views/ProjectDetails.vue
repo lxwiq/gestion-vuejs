@@ -103,6 +103,7 @@ async function handleCreateTask() {
     // Créer une copie de la tâche avec le projectId converti en nombre
     const taskToCreate = {
       ...newTask.value,
+      taskId: crypto.randomUUID(),
       projectId: Number(route.params.id) // Conversion explicite en nombre
     };
 
@@ -114,6 +115,7 @@ async function handleCreateTask() {
     // Réinitialiser le formulaire
     newTask.value = {
       title: '',
+      taskId: '',
       description: '',
       deadline: '',
       priority: 'medium',
@@ -244,7 +246,11 @@ async function fetchDevelopers() {
 // Modifier la fonction onMounted pour s'assurer que le projet est chargé avant les développeurs
 onMounted(async () => {
   try {
-    const projectId = Number(route.params.id);
+
+    const projectId = route.params.id;
+
+    //console.log('oki' + db.projects.get(projectId));
+
     project.value = await db.projects.get(projectId);
     console.log('Loaded project:', project.value);
 
