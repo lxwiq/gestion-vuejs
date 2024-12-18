@@ -30,7 +30,7 @@ const newTask = ref({
   deadline: '',
   priority: 'medium',
   assignedTo: '',
-  projectId: Number(route.params.id),
+  projectId: null,
   estimatedHours: 0,
   type: 'feature',
   status: 'pending',
@@ -52,17 +52,16 @@ const isProjectManager = computed(() => {
 // Charger les données du projet et ses tâches
 async function loadProjectData() {
   try {
-    // D'abord, récupérer le projet
-   // const projects = await projectStore.fetchProjects();
-    //console.log(projectStore.projects.find(p => p.id === route.params.id));
-    project.value = projectStore.projects.find(p => p.id === route.params.id);
+    await projectStore.fetchProjects();
+    const projectId = route.params.id;
+    project.value = await db.projects.get(projectId);
 
     if (!project.value) {
       throw new Error('Projet non trouvé');
     }
 
-    // Ensuite, récupérer les tâches du projet
-    await projectStore.fetchProjectTasks(route.params.id);
+    await projectStore.fetchProjectTasks(projectId);
+    await fetchDevelopers();
   } catch (error) {
     console.error('Erreur lors du chargement du projet:', error);
   }
@@ -91,49 +90,36 @@ async function handleDeleteProject() {
 // Gestion des tâches
 async function handleCreateTask() {
   try {
+    if (!project.value?.id) {
+      throw new Error('Projet non trouvé');
+    }
+
     if (!newTask.value.assignedTo) {
       throw new Error('Veuillez assigner la tâche à un développeur');
     }
 
-    // Vérifier que tous les champs requis sont présents
     if (!newTask.value.title || !newTask.value.description || !newTask.value.deadline) {
       throw new Error('Veuillez remplir tous les champs obligatoires');
     }
 
-    // Créer une copie de la tâche avec le projectId converti en nombre
     const taskToCreate = {
       ...newTask.value,
-      taskId: crypto.randomUUID(),
-      projectId: Number(route.params.id) // Conversion explicite en nombre
+      projectId: project.value.id
     };
 
-    console.log('Données de la nouvelle tâche:', taskToCreate);
-
-    // Utiliser le store pour créer la tâche
     await projectStore.createTask(taskToCreate);
-
-    // Réinitialiser le formulaire
-    newTask.value = {
-      title: '',
-      taskId: '',
-      description: '',
-      deadline: '',
-      priority: 'medium',
-      assignedTo: '',
-      projectId: route.params.id,
-      estimatedHours: 0,
-      type: 'feature',
-      status: 'pending',
-      dependencies: [],
-      tags: [],
-      subtasks: []
-    };
-
     showNewTaskForm.value = false;
-    await loadProjectData(); // Recharger les données du projet
+
+    // Recharger les données du projet et les statistiques
+    await Promise.all([
+      loadProjectData(),
+      projectStore.fetchProjects(), // Pour mettre à jour les statistiques globales
+      projectStore.fetchProjectTasks(project.value.id)
+    ]);
+
   } catch (error) {
     console.error('Erreur lors de la création de la tâche:', error);
-    alert(error.message || 'Erreur lors de la création de la tâche');
+    alert(error.message);
   }
 }
 
@@ -407,31 +393,22 @@ function removeSubtask(index) {
 }
 
 // Fonction pour ouvrir le formulaire de nouvelle tâche
-async function openNewTaskForm() {
-  try {
-    await fetchDevelopers();
-
-    // Réinitialiser le formulaire avec projectId en nombre
-    newTask.value = {
-      title: '',
-      description: '',
-      deadline: '',
-      priority: 'medium',
-      assignedTo: '',
-      projectId: Number(route.params.id), // Conversion en nombre
-      estimatedHours: 0,
-      type: 'feature',
-      status: 'pending',
-      dependencies: [],
-      tags: [],
-      subtasks: []
-    };
-
-    showNewTaskForm.value = true;
-  } catch (error) {
-    console.error('Error opening new task form:', error);
-    alert('Erreur lors de l\'ouverture du formulaire');
-  }
+function openNewTaskForm() {
+  newTask.value = {
+    title: '',
+    description: '',
+    deadline: '',
+    priority: 'medium',
+    assignedTo: '',
+    projectId: project.value?.id,
+    estimatedHours: 0,
+    type: 'feature',
+    status: 'pending',
+    dependencies: [],
+    tags: [],
+    subtasks: []
+  };
+  showNewTaskForm.value = true;
 }
 </script>
 
@@ -581,12 +558,9 @@ async function openNewTaskForm() {
             <button
               v-if="canCreateTask"
               @click="openNewTaskForm"
-              class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+              class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
             >
-              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Nouvelle tâche
+              Nouvelle Tâche
             </button>
           </div>
 

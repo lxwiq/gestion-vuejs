@@ -94,7 +94,11 @@ function getProjectName(projectId) {
 async function handleCompleteTask(taskId) {
   try {
     await projectStore.completeTask(taskId);
-    await projectStore.fetchDeveloperTasks(authStore.currentUser.id);
+    // Recharger toutes les données nécessaires
+    await Promise.all([
+      projectStore.fetchDeveloperTasks(authStore.currentUser.id),
+      projectStore.fetchProjects()
+    ]);
   } catch (error) {
     alert(error.message);
   }

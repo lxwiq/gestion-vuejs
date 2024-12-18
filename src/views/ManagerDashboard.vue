@@ -232,13 +232,19 @@ async function handleToggleManager(projectId) {
                 <button
                   @click="handleToggleManager(project.id)"
                   :class="[
-                    'px-2 py-1 rounded text-sm',
+                    'flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200',
                     project.managedBy?.includes(authStore.currentUser.id)
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   ]"
                 >
-                  {{ project.managedBy?.includes(authStore.currentUser.id) ? 'Géré' : 'Gérer' }}
+                  <span class="mr-1">
+                    <i class="fas fa-user-shield" :class="{
+                      'text-green-600': project.managedBy?.includes(authStore.currentUser.id),
+                      'text-gray-500': !project.managedBy?.includes(authStore.currentUser.id)
+                    }"></i>
+                  </span>
+                  {{ project.managedBy?.includes(authStore.currentUser.id) ? 'Je gère ce projet' : 'Prendre en charge' }}
                 </button>
               </div>
             </div>

@@ -100,21 +100,28 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Créer une tâche
   async function createTask(taskData) {
-    const newTask = {
-      taskId: taskData.taskId,
-      projectId: taskData.projectId,
-      title: taskData.title,
-      description: taskData.description,
-      status: taskData.assignedTo ? 'in_progress' : 'pending',
-      assignedTo: taskData.assignedTo || null,
-      createdAt: new Date().toISOString(),
-      deadline: taskData.deadline,
-      priority: taskData.priority || 'medium'
-    };
+    try {
+      const newTask = {
+        id: crypto.randomUUID(),
+        projectId: taskData.projectId,
+        title: taskData.title,
+        description: taskData.description,
+        status: taskData.assignedTo ? 'in_progress' : 'pending',
+        assignedTo: taskData.assignedTo || null,
+        createdAt: new Date().toISOString(),
+        deadline: taskData.deadline,
+        priority: taskData.priority || 'medium',
+        estimatedHours: taskData.estimatedHours || 0,
+        type: taskData.type || 'feature'
+      };
 
-    const id = await db.tasks.add(newTask);
-    await fetchProjectTasks(taskData.projectId);
-    return id;
+      await db.tasks.add(newTask);
+      const updatedTasks = await fetchProjectTasks(taskData.projectId);
+      return newTask.id;
+    } catch (error) {
+      console.error('Erreur lors de la création de la tâche:', error);
+      throw error;
+    }
   }
 
   // Modifier une tâche
@@ -149,11 +156,24 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Valider une tâche
   async function validateTask(taskId) {
-    const task = await db.tasks.get(taskId);
-    if (!task.assignedTo) {
-      throw new Error('Impossible de valider une tâche non assignée');
+    try {
+      const task = await db.tasks.get(taskId);
+      if (!task.assignedTo) {
+        throw new Error('Impossible de valider une tâche non assignée');
+      }
+
+      await db.tasks.update(taskId, { status: 'validated' });
+
+      // Mettre à jour toutes les données nécessaires
+      await Promise.all([
+        fetchProjects(),
+        fetchProjectTasks(task.projectId),
+        fetchDeveloperTasks(task.assignedTo)
+      ]);
+    } catch (error) {
+      console.error('Erreur lors de la validation de la tâche:', error);
+      throw error;
     }
-    await updateTask(taskId, { status: 'validated' });
   }
 
   // Obtenir les statistiques d'un projet
@@ -237,11 +257,26 @@ export const useProjectStore = defineStore('projects', () => {
 
   // Marquer une tâche comme complétée (pour les développeurs)
   async function completeTask(taskId) {
-    const task = await db.tasks.get(taskId);
-    if (task.assignedTo !== authStore.currentUser.id) {
-      throw new Error('Vous ne pouvez pas marquer cette tâche comme complétée');
+    try {
+      const task = await db.tasks.get(taskId);
+      if (!task) throw new Error('Tâche non trouvée');
+
+      await db.tasks.update(taskId, {
+        status: 'completed'
+      });
+
+      // Mettre à jour toutes les données nécessaires
+      await Promise.all([
+        fetchProjects(),
+        fetchProjectTasks(task.projectId),
+        fetchDeveloperTasks(task.assignedTo)
+      ]);
+
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la complétion de la tâche:', error);
+      throw error;
     }
-    await updateTask(taskId, { status: 'completed' });
   }
 
   return {
