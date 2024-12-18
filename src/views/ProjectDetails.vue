@@ -30,7 +30,13 @@ const newTask = ref({
   deadline: '',
   priority: 'medium',
   assignedTo: '',
-  projectId: route.params.id
+  projectId: route.params.id,
+  estimatedHours: 0,
+  type: 'feature',
+  status: 'pending',
+  dependencies: [],
+  tags: [],
+  subtasks: []
 });
 
 // Récupérer les développeurs pour l'assignation
@@ -102,7 +108,13 @@ async function handleCreateTask() {
       deadline: '',
       priority: 'medium',
       assignedTo: '',
-      projectId: route.params.id
+      projectId: route.params.id,
+      estimatedHours: 0,
+      type: 'feature',
+      status: 'pending',
+      dependencies: [],
+      tags: [],
+      subtasks: []
     };
 
     showNewTaskForm.value = false;
@@ -321,6 +333,38 @@ const canValidateTask = computed(() => {
 // Fonction pour formater la date
 function formatDate(date) {
   return new Date(date).toLocaleDateString();
+}
+
+// Ajout de données de référence pour les types de tâches et tags
+const taskTypes = [
+  { value: 'feature', label: 'Fonctionnalité' },
+  { value: 'bug', label: 'Bug' },
+  { value: 'improvement', label: 'Amélioration' },
+  { value: 'documentation', label: 'Documentation' },
+  { value: 'test', label: 'Test' }
+];
+
+const availableTags = [
+  'Frontend',
+  'Backend',
+  'UI/UX',
+  'Database',
+  'API',
+  'Security',
+  'Performance'
+];
+
+// Fonction pour ajouter une sous-tâche
+function addSubtask() {
+  newTask.value.subtasks.push({
+    title: '',
+    completed: false
+  });
+}
+
+// Fonction pour supprimer une sous-tâche
+function removeSubtask(index) {
+  newTask.value.subtasks.splice(index, 1);
 }
 </script>
 
@@ -682,52 +726,73 @@ function formatDate(date) {
         v-if="showNewTaskForm"
         class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center"
       >
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Nouvelle tâche</h3>
+            <h3 class="text-lg font-medium text-gray-900">Créer une nouvelle tâche</h3>
           </div>
-          <form @submit.prevent="handleCreateTask" class="p-6">
-            <div class="space-y-4">
+
+          <form @submit.prevent="handleCreateTask" class="p-6 space-y-4">
+            <!-- Informations de base -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Titre -->
               <div>
                 <label class="block text-sm font-medium text-gray-700">Titre</label>
                 <input
                   v-model="newTask.title"
                   type="text"
                   required
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 />
               </div>
+
+              <!-- Type de tâche -->
               <div>
-                <label class="block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  v-model="newTask.description"
-                  rows="3"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                ></textarea>
-              </div>
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Date limite</label>
-                  <input
-                    v-model="newTask.deadline"
-                    type="date"
-                    required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Priorité</label>
-                  <select
-                    v-model="newTask.priority"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  >
-                    <option value="low">Basse</option>
-                    <option value="medium">Moyenne</option>
-                    <option value="high">Haute</option>
-                  </select>
-                </div>
+                <label class="block text-sm font-medium text-gray-700">Type</label>
+                <select
+                  v-model="newTask.type"
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                  <option v-for="type in taskTypes" :key="type.value" :value="type.value">
+                    {{ type.label }}
+                  </option>
+                </select>
               </div>
             </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Description</label>
+              <textarea
+                v-model="newTask.description"
+                rows="3"
+                required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              ></textarea>
+            </div>
+
+            <!-- Dates et estimation -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Date limite</label>
+                <input
+                  v-model="newTask.deadline"
+                  type="date"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Estimation (heures)</label>
+                <input
+                  v-model.number="newTask.estimatedHours"
+                  type="number"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
             <div class="mt-6 flex justify-end space-x-3">
               <button
                 type="button"
