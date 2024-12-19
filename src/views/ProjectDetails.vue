@@ -33,7 +33,7 @@ const newTask = ref({
   projectId: null,
   estimatedHours: 0,
   type: 'feature',
-  status: 'pending',
+  status: 'to_validate',
   dependencies: [],
   tags: [],
   subtasks: []
@@ -148,9 +148,6 @@ async function handleAssignTask(taskId, developerId) {
   }
 }
 
-async function handleValidateTask(taskId) {
-  await projectStore.validateTask(taskId);
-}
 
 // Statistiques et filtres
 const tasksByStatus = computed(() => {
@@ -186,10 +183,10 @@ async function handleEditTask() {
 // Ajouter un objet pour la traduction des filtres
 const filterLabels = {
   'all': 'Toutes',
-  'pending': 'En attente',
+  'to_validate': 'À valider',
   'in_progress': 'En cours',
-  'validated': 'Validées',
-  'overdue': 'En retard'
+  'completed': 'Complétée',
+  'validated': 'Validée'
 };
 
 const taskFilter = ref('all');
@@ -198,14 +195,14 @@ const filteredTasks = computed(() => {
   let tasks = projectStore.tasks;
 
   switch (taskFilter.value) {
-    case 'pending':
-      return tasks.filter(t => t.status === 'pending');
+    case 'to_validate':
+      return tasks.filter(t => t.status === 'to_validate');
     case 'in_progress':
       return tasks.filter(t => t.status === 'in_progress');
+    case 'completed':
+      return tasks.filter(t => t.status === 'completed');
     case 'validated':
       return tasks.filter(t => t.status === 'validated');
-    case 'overdue':
-      return tasks.filter(t => new Date(t.deadline) < new Date() && t.status !== 'validated');
     default:
       return tasks;
   }
@@ -314,10 +311,33 @@ function openCommentForm(task) {
   loadTaskComments(task.id);
 }
 
-// Marquer une tâche comme complétée
-async function handleCompleteTask(taskId) {
+// Fonction pour gérer les changements d'état des tâches
+async function handleTaskStatusChange(taskId, newStatus) {
   try {
-    await projectStore.completeTask(taskId);
+    const task = await db.tasks.get(taskId);
+    if (!task) {
+      throw new Error('Tâche non trouvée');
+    }
+
+    // Vérifier les transitions d'état autorisées selon le rôle
+    if (isDeveloper.value) {
+      if ((task.status === 'to_validate' && newStatus === 'in_progress') ||
+          (task.status === 'in_progress' && newStatus === 'completed')) {
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else if (isProjectManager.value && task.status === 'completed' && newStatus === 'validated') {
+        // Permettre à un utilisateur qui est à la fois développeur et manager de valider les tâches
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else {
+        throw new Error('Transition d\'état non autorisée pour un développeur');
+      }
+    } else if (isProjectManager.value) {
+      if (task.status === 'completed' && newStatus === 'validated') {
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else {
+        throw new Error('Seules les tâches complétées peuvent être validées par un manager');
+      }
+    }
+
     await projectStore.fetchProjectTasks(project.value.id);
   } catch (error) {
     alert(error.message);
@@ -357,9 +377,9 @@ function getManagerNames(managerIds) {
 // Fonction pour obtenir le statut formaté
 function getStatusLabel(status) {
   const statusLabels = {
-    'pending': 'En attente',
+    'to_validate': 'À valider',
     'in_progress': 'En cours',
-    'completed': 'Terminée',
+    'completed': 'Complétée',
     'validated': 'Validée'
   };
   return statusLabels[status] || status;
@@ -368,7 +388,7 @@ function getStatusLabel(status) {
 // Fonction pour obtenir la classe de couleur selon le statut
 function getStatusClass(status) {
   const statusClasses = {
-    'pending': 'bg-gray-100 text-gray-800',
+    'to_validate': 'bg-gray-100 text-gray-800',
     'in_progress': 'bg-yellow-100 text-yellow-800',
     'completed': 'bg-blue-100 text-blue-800',
     'validated': 'bg-green-100 text-green-800'
@@ -434,12 +454,38 @@ function openNewTaskForm() {
     projectId: project.value?.id,
     estimatedHours: 0,
     type: 'feature',
-    status: 'pending',
+    status: 'to_validate',
     dependencies: [],
     tags: [],
     subtasks: []
   };
   showNewTaskForm.value = true;
+}
+
+// Fonction pour démarrer une tâche (passage en "en cours")
+async function handleStartTask(taskId) {
+  try {
+    await projectStore.updateTaskStatus(taskId, 'in_progress');
+    await projectStore.fetchProjectTasks(project.value.id);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// Fonction pour valider une tâche (par le manager)
+async function handleValidateTask(taskId) {
+  try {
+    await projectStore.updateTaskStatus(taskId, 'validated');
+    await projectStore.fetchProjectTasks(project.value.id);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// Fonction pour obtenir le nom de l'utilisateur (développeur ou manager)
+function getUserEmail(userId) {
+  const user = users.value.find(u => u.id === userId);
+  return user ? user.email : 'Utilisateur inconnu';
 }
 </script>
 
@@ -530,7 +576,7 @@ function openNewTaskForm() {
             <div class="flex items-center">
               <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
                 <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </div>
               <div class="ml-5 w-0 flex-1">
@@ -704,6 +750,36 @@ function openNewTaskForm() {
                 </span>
               </div>
 
+              <!-- Actions de changement d'état -->
+              <div v-if="isDeveloper || isProjectManager" class="flex space-x-2">
+                <!-- Actions pour les développeurs -->
+                <template v-if="isDeveloper">
+                  <button
+                    v-if="selectedTask.status === 'to_validate'"
+                    @click="handleTaskStatusChange(selectedTask.id, 'in_progress')"
+                    class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Commencer le travail
+                  </button>
+                  <button
+                    v-if="selectedTask.status === 'in_progress'"
+                    @click="handleTaskStatusChange(selectedTask.id, 'completed')"
+                    class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    Marquer comme terminée
+                  </button>
+                </template>
+
+                <!-- Actions pour les managers -->
+                <button
+                  v-if="(isProjectManager || (isDeveloper && isProjectManager)) && selectedTask.status === 'completed'"
+                  @click="handleTaskStatusChange(selectedTask.id, 'validated')"
+                  class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Valider la tâche
+                </button>
+              </div>
+
               <!-- Commentaires -->
               <div class="mt-6">
                 <h4 class="font-medium text-gray-900 mb-4">Commentaires</h4>
@@ -711,13 +787,15 @@ function openNewTaskForm() {
                   <div v-for="comment in taskComments" :key="comment.id" class="bg-gray-50 p-4 rounded-lg">
                     <div class="flex justify-between">
                       <span class="text-sm font-medium text-gray-900">
-                        {{ getDeveloperEmail(comment.userId) }}
+                        {{ getUserEmail(comment.userId) }}
                       </span>
                       <span class="text-sm text-gray-500">
                         {{ new Date(comment.createdAt).toLocaleString() }}
                       </span>
                     </div>
-                    <p class="mt-1 text-sm text-gray-500">{{ comment.content }}</p>
+                    <div class="mt-2 text-gray-900">
+                      {{ comment.content }}
+                    </div>
                   </div>
                 </div>
 

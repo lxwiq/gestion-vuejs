@@ -279,6 +279,21 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  async function updateTaskStatus(taskId, status) {
+    try {
+      const task = await db.tasks.get(taskId);
+      if (!task) {
+        throw new Error('Tâche non trouvée');
+      }
+
+      await db.tasks.update(taskId, { status });
+      await fetchProjectTasks(task.projectId);
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du statut:', error);
+      throw error;
+    }
+  }
+
   return {
     projects,
     tasks,
@@ -298,6 +313,7 @@ export const useProjectStore = defineStore('projects', () => {
     fetchDeveloperTasks,
     addComment,
     fetchTaskComments,
-    completeTask
+    completeTask,
+    updateTaskStatus
   };
 });
