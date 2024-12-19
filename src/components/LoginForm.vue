@@ -88,7 +88,7 @@ async function handleSubmit() {
     const formData = {
       email: email.value,
       password: password.value,
-      roles: roles.value
+      roles: isRegisterMode.value ? roles.value : undefined
     };
 
     if (isRegisterMode.value) {
@@ -99,10 +99,11 @@ async function handleSubmit() {
         password: password.value
       });
     }
+
     if (authStore.currentUser?.roles.includes('manager')) {
       router.push('/manager-dashboard');
     } else {
-      router.push('/projects');
+      router.push('/developer-dashboard');
     }
   } catch (error) {
     alert(error.message);

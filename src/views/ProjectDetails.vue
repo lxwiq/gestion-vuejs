@@ -28,12 +28,27 @@ const newTask = ref({
   title: '',
   description: '',
   deadline: '',
-  priority: 'medium'
+  priority: 'medium',
+  assignedTo: '',
+  projectId: null,
+  estimatedHours: 0,
+  type: 'feature',
+  status: 'to_validate',
+  dependencies: [],
+  tags: [],
+  subtasks: []
 });
 
 // Récupérer les développeurs pour l'assignation
 async function fetchUsers() {
-  users.value = await db.users.toArray();
+  try {
+    const allUsers = await db.users.toArray();
+    console.log('Utilisateurs chargés:', allUsers); // Pour le débogage
+    users.value = allUsers;
+  } catch (error) {
+    console.error('Erreur lors du chargement des utilisateurs:', error);
+    users.value = [];
+  }
 }
 
 // Vérifier si l'utilisateur actuel est manager de ce projet
@@ -43,10 +58,21 @@ const isProjectManager = computed(() => {
 
 // Charger les données du projet et ses tâches
 async function loadProjectData() {
-  const projectId = Number(route.params.id);
-  project.value = await db.projects.get(projectId);
-  await projectStore.fetchProjectTasks(projectId);
-  await fetchUsers();
+  try {
+    await projectStore.fetchProjects();
+    const projectId = route.params.id;
+    project.value = await db.projects.get(projectId);
+
+    if (!project.value) {
+      throw new Error('Projet non trouvé');
+    }
+
+    await projectStore.fetchProjectTasks(projectId);
+    await fetchUsers();
+    await fetchDevelopers();
+  } catch (error) {
+    console.error('Erreur lors du chargement du projet:', error);
+  }
 }
 
 onMounted(loadProjectData);
@@ -72,13 +98,35 @@ async function handleDeleteProject() {
 // Gestion des tâches
 async function handleCreateTask() {
   try {
-    await projectStore.createTask({
+    if (!project.value?.id) {
+      throw new Error('Projet non trouvé');
+    }
+
+    if (!newTask.value.assignedTo) {
+      throw new Error('Veuillez assigner la tâche à un développeur');
+    }
+
+    if (!newTask.value.title || !newTask.value.description || !newTask.value.deadline) {
+      throw new Error('Veuillez remplir tous les champs obligatoires');
+    }
+
+    const taskToCreate = {
       ...newTask.value,
       projectId: project.value.id
-    });
+    };
+
+    await projectStore.createTask(taskToCreate);
     showNewTaskForm.value = false;
-    newTask.value = { title: '', description: '', deadline: '', priority: 'medium' };
+
+    // Recharger les données du projet et les statistiques
+    await Promise.all([
+      loadProjectData(),
+      projectStore.fetchProjects(), // Pour mettre à jour les statistiques globales
+      projectStore.fetchProjectTasks(project.value.id)
+    ]);
+
   } catch (error) {
+    console.error('Erreur lors de la création de la tâche:', error);
     alert(error.message);
   }
 }
@@ -100,9 +148,6 @@ async function handleAssignTask(taskId, developerId) {
   }
 }
 
-async function handleValidateTask(taskId) {
-  await projectStore.validateTask(taskId);
-}
 
 // Statistiques et filtres
 const tasksByStatus = computed(() => {
@@ -138,10 +183,10 @@ async function handleEditTask() {
 // Ajouter un objet pour la traduction des filtres
 const filterLabels = {
   'all': 'Toutes',
-  'pending': 'En attente',
+  'to_validate': 'À valider',
   'in_progress': 'En cours',
-  'validated': 'Validées',
-  'overdue': 'En retard'
+  'completed': 'Complétée',
+  'validated': 'Validée'
 };
 
 const taskFilter = ref('all');
@@ -150,14 +195,14 @@ const filteredTasks = computed(() => {
   let tasks = projectStore.tasks;
 
   switch (taskFilter.value) {
-    case 'pending':
-      return tasks.filter(t => t.status === 'pending');
+    case 'to_validate':
+      return tasks.filter(t => t.status === 'to_validate');
     case 'in_progress':
       return tasks.filter(t => t.status === 'in_progress');
+    case 'completed':
+      return tasks.filter(t => t.status === 'completed');
     case 'validated':
       return tasks.filter(t => t.status === 'validated');
-    case 'overdue':
-      return tasks.filter(t => new Date(t.deadline) < new Date() && t.status !== 'validated');
     default:
       return tasks;
   }
@@ -168,17 +213,43 @@ const developers = ref([]);
 
 // Charger la liste des développeurs
 async function fetchDevelopers() {
-  developers.value = await db.users
-    .filter(user => user.roles.includes('developer'))
-    .toArray();
+
+  console.log('Project value:', project.value);
+  console.log('Project developers:', project.value?.developers);
+
+  // Récupérer d'abord tous les développeurs
+  const allUsers = await db.users.toArray();
+
+  console.log('All users:', allUsers);
+
+  // Filtrer les développeurs du projet
+  /*developers.value = allUsers.filter(user =>
+    user.roles.includes('developer') &&
+    (project.value?.developer || []).includes(user.id)
+  );*/
+  developers.value = allUsers.filter(user =>
+    user.roles.includes('developer')
+  );
+
+  console.log('Filtered developers:', developers.value);
 }
 
-// Modifier la fonction onMounted pour charger les développeurs
+// Modifier la fonction onMounted pour s'assurer que le projet est chargé avant les développeurs
 onMounted(async () => {
-  const projectId = Number(route.params.id);
-  project.value = await db.projects.get(projectId);
-  await projectStore.fetchProjectTasks(projectId);
-  await fetchDevelopers();
+  try {
+
+    const projectId = route.params.id;
+
+    //console.log('oki' + db.projects.get(projectId));
+
+    project.value = await db.projects.get(projectId);
+    console.log('Loaded project:', project.value);
+
+    await projectStore.fetchProjectTasks(projectId);
+    await fetchDevelopers();
+  } catch (error) {
+    console.error('Error loading project data:', error);
+  }
 });
 
 // Fonction pour obtenir le nom du développeur assigné
@@ -222,11 +293,15 @@ async function loadTaskComments(taskId) {
 
 // Gérer l'ajout d'un commentaire
 async function handleAddComment() {
-  if (!newComment.value.trim()) return;
+  try {
+    if (!newComment.value.trim() || !selectedTask.value) return;
 
-  await projectStore.addComment(selectedTaskForComment.value.id, newComment.value);
-  await loadTaskComments(selectedTaskForComment.value.id);
-  newComment.value = '';
+    await projectStore.addComment(selectedTask.value.id, newComment.value);
+    await loadTaskComments(selectedTask.value.id);
+    newComment.value = '';
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout du commentaire:', error);
+  }
 }
 
 // Ouvrir le formulaire de commentaire
@@ -236,14 +311,181 @@ function openCommentForm(task) {
   loadTaskComments(task.id);
 }
 
-// Marquer une tâche comme complétée
-async function handleCompleteTask(taskId) {
+// Fonction pour gérer les changements d'état des tâches
+async function handleTaskStatusChange(taskId, newStatus) {
   try {
-    await projectStore.completeTask(taskId);
+    const task = await db.tasks.get(taskId);
+    if (!task) {
+      throw new Error('Tâche non trouvée');
+    }
+
+    // Vérifier les transitions d'état autorisées selon le rôle
+    if (isDeveloper.value) {
+      if ((task.status === 'to_validate' && newStatus === 'in_progress') ||
+          (task.status === 'in_progress' && newStatus === 'completed')) {
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else if (isProjectManager.value && task.status === 'completed' && newStatus === 'validated') {
+        // Permettre à un utilisateur qui est à la fois développeur et manager de valider les tâches
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else {
+        throw new Error('Transition d\'état non autorisée pour un développeur');
+      }
+    } else if (isProjectManager.value) {
+      if (task.status === 'completed' && newStatus === 'validated') {
+        await projectStore.updateTaskStatus(taskId, newStatus);
+      } else {
+        throw new Error('Seules les tâches complétées peuvent être validées par un manager');
+      }
+    }
+
     await projectStore.fetchProjectTasks(project.value.id);
   } catch (error) {
     alert(error.message);
   }
+}
+
+// Ajout de nouveaux états pour la gestion des tâches
+const selectedTask = ref(null);
+const showTaskDetails = ref(false);
+
+// Fonction pour ouvrir les détails d'une tâche
+async function openTaskDetails(task) {
+  selectedTask.value = { ...task };
+  showTaskDetails.value = true;
+  await loadTaskComments(task.id);
+}
+// fonction pour obtenir les noms des managers
+function getManagerNames(managerIds) {
+  if (!managerIds || !Array.isArray(managerIds) || managerIds.length === 0) {
+    return 'Aucun manager assigné';
+  }
+
+  if (!users.value || users.value.length === 0) {
+    return 'Chargement des managers...';
+  }
+
+  const managerEmails = managerIds
+    .map(id => {
+      const user = users.value.find(u => u.id === id);
+      return user ? user.email : null;
+    })
+    .filter(email => email !== null);
+
+  return managerEmails.length > 0 ? managerEmails.join(', ') : 'Aucun manager assigné';
+}
+
+// Fonction pour obtenir le statut formaté
+function getStatusLabel(status) {
+  const statusLabels = {
+    'to_validate': 'À valider',
+    'in_progress': 'En cours',
+    'completed': 'Complétée',
+    'validated': 'Validée'
+  };
+  return statusLabels[status] || status;
+}
+
+// Fonction pour obtenir la classe de couleur selon le statut
+function getStatusClass(status) {
+  const statusClasses = {
+    'to_validate': 'bg-gray-100 text-gray-800',
+    'in_progress': 'bg-yellow-100 text-yellow-800',
+    'completed': 'bg-blue-100 text-blue-800',
+    'validated': 'bg-green-100 text-green-800'
+  };
+  return statusClasses[status] || 'bg-gray-100 text-gray-800';
+}
+
+// Fonction pour vérifier si l'utilisateur peut modifier une tâche
+const canEditTask = computed(() => {
+  return isProjectManager.value || isDeveloper.value;
+});
+
+// Fonction pour vérifier si l'utilisateur peut valider une tâche
+const canValidateTask = computed(() => {
+  return isProjectManager.value;
+});
+
+// Fonction pour formater la date
+function formatDate(date) {
+  return new Date(date).toLocaleDateString();
+}
+
+// Ajout de données de référence pour les types de tâches et tags
+const taskTypes = [
+  { value: 'feature', label: 'Fonctionnalité' },
+  { value: 'bug', label: 'Bug' },
+  { value: 'improvement', label: 'Amélioration' },
+  { value: 'documentation', label: 'Documentation' },
+  { value: 'test', label: 'Test' }
+];
+
+const availableTags = [
+  'Frontend',
+  'Backend',
+  'UI/UX',
+  'Database',
+  'API',
+  'Security',
+  'Performance'
+];
+
+// Fonction pour ajouter une sous-tâche
+function addSubtask() {
+  newTask.value.subtasks.push({
+    title: '',
+    completed: false
+  });
+}
+
+// Fonction pour supprimer une sous-tâche
+function removeSubtask(index) {
+  newTask.value.subtasks.splice(index, 1);
+}
+
+// Fonction pour ouvrir le formulaire de nouvelle tâche
+function openNewTaskForm() {
+  newTask.value = {
+    title: '',
+    description: '',
+    deadline: '',
+    priority: 'medium',
+    assignedTo: '',
+    projectId: project.value?.id,
+    estimatedHours: 0,
+    type: 'feature',
+    status: 'to_validate',
+    dependencies: [],
+    tags: [],
+    subtasks: []
+  };
+  showNewTaskForm.value = true;
+}
+
+// Fonction pour démarrer une tâche (passage en "en cours")
+async function handleStartTask(taskId) {
+  try {
+    await projectStore.updateTaskStatus(taskId, 'in_progress');
+    await projectStore.fetchProjectTasks(project.value.id);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// Fonction pour valider une tâche (par le manager)
+async function handleValidateTask(taskId) {
+  try {
+    await projectStore.updateTaskStatus(taskId, 'validated');
+    await projectStore.fetchProjectTasks(project.value.id);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// Fonction pour obtenir le nom de l'utilisateur (développeur ou manager)
+function getUserEmail(userId) {
+  const user = users.value.find(u => u.id === userId);
+  return user ? user.email : 'Utilisateur inconnu';
 }
 </script>
 
@@ -281,17 +523,16 @@ async function handleCompleteTask(taskId) {
               </button>
             </div>
           </div>
-          <div class="mt-4 flex items-center space-x-2">
-            <span class="text-sm text-gray-500">Managers :</span>
-            <div class="flex space-x-2">
-              <span
-                v-for="managerId in project.managedBy"
-                :key="managerId"
-                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
-              >
-                {{ users.find(u => u.id === managerId)?.email }}
-              </span>
-            </div>
+          <div class="mt-4 flex items-center">
+            <span class="text-sm text-gray-500">
+              Managers :
+              <template v-if="users.length > 0">
+                {{ getManagerNames(project.managedBy) }}
+              </template>
+              <template v-else>
+                Chargement...
+              </template>
+            </span>
           </div>
         </div>
       </div>
@@ -335,7 +576,7 @@ async function handleCompleteTask(taskId) {
             <div class="flex items-center">
               <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
                 <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </div>
               <div class="ml-5 w-0 flex-1">
@@ -385,66 +626,56 @@ async function handleCompleteTask(taskId) {
         </div>
       </div>
 
-      <!-- Gestion des tâches -->
+      <!-- Section des tâches -->
       <div class="bg-white shadow-sm rounded-lg">
-        <div class="border-b border-gray-200">
-          <div class="px-6 py-4 flex justify-between items-center">
-            <h3 class="text-lg font-medium text-gray-900">Tâches</h3>
+        <div class="px-6 py-4">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Tâches du projet</h3>
             <button
               v-if="canCreateTask"
-              @click="showNewTaskForm = true"
-              class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+              @click="openNewTaskForm"
+              class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
             >
-              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Nouvelle tâche
+              Nouvelle Tâche
             </button>
           </div>
-        </div>
 
-        <!-- Filtres des tâches -->
-        <div class="mb-4 flex space-x-2">
-          <button
-            v-for="(label, filter) in filterLabels"
-            :key="filter"
-            @click="taskFilter = filter"
-            :class="[
-              'px-3 py-2 rounded-md text-sm font-medium',
-              taskFilter === filter
-                ? 'bg-indigo-100 text-indigo-700'
-                : 'text-gray-500 hover:bg-gray-100'
-            ]"
-          >
-            {{ label }}
-          </button>
-        </div>
+          <!-- Filtres des tâches -->
+          <div class="flex space-x-2 mb-4">
+            <button
+              v-for="(label, filter) in filterLabels"
+              :key="filter"
+              @click="taskFilter = filter"
+              :class="[
+                'px-3 py-2 rounded-md text-sm font-medium',
+                taskFilter === filter
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-gray-500 hover:bg-gray-100'
+              ]"
+            >
+              {{ label }}
+            </button>
+          </div>
 
-        <div class="divide-y divide-gray-200">
-          <div
-            v-for="task in filteredTasks"
-            :key="task.id"
-            :class="[
-              'px-6 py-4 hover:bg-gray-50',
-              new Date(task.deadline) < new Date() && task.status !== 'validated' ? 'bg-red-50' : ''
-            ]"
-          >
-            <div class="flex items-center justify-between">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center space-x-3">
-                  <div
-                    :class="{
-                      'bg-gray-100': task.status === 'pending',
-                      'bg-yellow-100': task.status === 'in_progress',
-                      'bg-green-100': task.status === 'validated'
-                    }"
-                    class="flex-shrink-0 w-2.5 h-2.5 rounded-full"
-                  ></div>
-                  <h4 class="text-sm font-medium text-gray-900">{{ task.title }}</h4>
-                </div>
-                <div class="mt-2">
-                  <p class="text-sm text-gray-500">{{ task.description }}</p>
-                  <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+          <!-- Liste des tâches -->
+          <div class="space-y-4">
+            <div
+              v-for="task in filteredTasks"
+              :key="task.id"
+              class="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
+              @click="openTaskDetails(task)"
+            >
+              <div class="flex justify-between items-start">
+                <div>
+                  <h4 class="font-medium text-gray-900">{{ task.title }}</h4>
+                  <p class="mt-1 text-sm text-gray-500">{{ task.description }}</p>
+                  <div class="mt-2 flex items-center space-x-4">
+                    <span
+                      :class="getStatusClass(task.status)"
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    >
+                      {{ getStatusLabel(task.status) }}
+                    </span>
                     <span
                       :class="{
                         'bg-yellow-100 text-yellow-800': task.priority === 'medium',
@@ -455,73 +686,136 @@ async function handleCompleteTask(taskId) {
                     >
                       {{ task.priority }}
                     </span>
-                    <span>Échéance: {{ new Date(task.deadline).toLocaleDateString() }}</span>
+                    <span class="text-sm text-gray-500">
+                      Échéance: {{ new Date(task.deadline).toLocaleDateString() }}
+                    </span>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm text-gray-500">
+                    Assignée à: {{ getDeveloperEmail(task.assignedTo) }}
+                  </span>
+                  <div v-if="canEditTask" class="flex space-x-2">
+                    <button
+                      v-if="isProjectManager"
+                      @click.stop="startEditTask(task)"
+                      class="text-indigo-600 hover:text-indigo-900"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      v-if="isProjectManager"
+                      @click.stop="handleDeleteTask(task.id)"
+                      class="text-red-600 hover:text-red-900"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
-              <div v-if="isProjectManager" class="ml-4 flex items-center space-x-4">
-                <select
-                  v-model="task.assignedTo"
-                  @change="handleAssignTask(task.id, $event.target.value)"
-                  class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                >
-                  <option value="">Non assigné</option>
-                  <option
-                    v-for="user in users.filter(u => u.roles.includes('developer'))"
-                    :key="user.id"
-                    :value="user.id"
+            </div>
+          </div>
+
+          <!-- Message si aucune tâche -->
+          <div v-if="filteredTasks.length === 0" class="text-center py-12">
+            <p class="text-gray-500">Aucune tâche ne correspond aux critères sélectionnés.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal des détails de tâche -->
+      <div v-if="showTaskDetails" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-2xl w-full mx-4">
+          <div class="px-6 py-4">
+            <div class="flex justify-between items-start">
+              <h3 class="text-lg font-medium text-gray-900">{{ selectedTask.title }}</h3>
+              <button @click="showTaskDetails = false" class="text-gray-400 hover:text-gray-500">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div class="mt-4 space-y-4">
+              <p class="text-gray-500">{{ selectedTask.description }}</p>
+              <div class="flex items-center space-x-4">
+                <span :class="getStatusClass(selectedTask.status)" class="px-2.5 py-0.5 rounded-full text-xs font-medium">
+                  {{ getStatusLabel(selectedTask.status) }}
+                </span>
+                <span class="text-sm text-gray-500">
+                  Échéance: {{ new Date(selectedTask.deadline).toLocaleDateString() }}
+                </span>
+              </div>
+
+              <!-- Actions de changement d'état -->
+              <div v-if="isDeveloper || isProjectManager" class="flex space-x-2">
+                <!-- Actions pour les développeurs -->
+                <template v-if="isDeveloper">
+                  <button
+                    v-if="selectedTask.status === 'to_validate'"
+                    @click="handleTaskStatusChange(selectedTask.id, 'in_progress')"
+                    class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
-                    {{ user.email }}
-                  </option>
-                </select>
+                    Commencer le travail
+                  </button>
+                  <button
+                    v-if="selectedTask.status === 'in_progress'"
+                    @click="handleTaskStatusChange(selectedTask.id, 'completed')"
+                    class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    Marquer comme terminée
+                  </button>
+                </template>
+
+                <!-- Actions pour les managers -->
                 <button
-                  v-if="task.status !== 'validated'"
-                  @click="handleValidateTask(task.id)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-green-600 hover:bg-green-700"
+                  v-if="(isProjectManager || (isDeveloper && isProjectManager)) && selectedTask.status === 'completed'"
+                  @click="handleTaskStatusChange(selectedTask.id, 'validated')"
+                  class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                </button>
-                <button
-                  @click="handleDeleteTask(task.id)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-red-600 hover:bg-red-700"
-                >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <button
-                  v-if="isProjectManager"
-                  @click="startEditTask(task)"
-                  class="inline-flex items-center p-1 border border-transparent rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-                >
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
+                  Valider la tâche
                 </button>
               </div>
-              <!-- Actions pour les développeurs -->
-              <div v-if="isDeveloper && task.assignedTo === authStore.currentUser?.id" class="mt-4 flex space-x-4">
-                <button
-                  v-if="task.status !== 'completed' && task.status !== 'validated'"
-                  @click="handleCompleteTask(task.id)"
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
-                >
-                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Marquer comme terminée
-                </button>
-                <button
-                  @click="openCommentForm(task)"
-                  class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  Commenter
-                </button>
+
+              <!-- Commentaires -->
+              <div class="mt-6">
+                <h4 class="font-medium text-gray-900 mb-4">Commentaires</h4>
+                <div class="space-y-4">
+                  <div v-for="comment in taskComments" :key="comment.id" class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex justify-between">
+                      <span class="text-sm font-medium text-gray-900">
+                        {{ getUserEmail(comment.userId) }}
+                      </span>
+                      <span class="text-sm text-gray-500">
+                        {{ new Date(comment.createdAt).toLocaleString() }}
+                      </span>
+                    </div>
+                    <div class="mt-2 text-gray-900">
+                      {{ comment.content }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Formulaire de nouveau commentaire -->
+                <div class="mt-4">
+                  <textarea
+                    v-model="newComment"
+                    rows="3"
+                    class="shadow-sm block w-full focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+                    placeholder="Ajouter un commentaire..."
+                  ></textarea>
+                  <div class="mt-2 flex justify-end">
+                    <button
+                      @click="handleAddComment"
+                      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      Commenter
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -581,52 +875,87 @@ async function handleCompleteTask(taskId) {
         v-if="showNewTaskForm"
         class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center"
       >
-        <div class="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Nouvelle tâche</h3>
+            <h3 class="text-lg font-medium text-gray-900">Créer une nouvelle tâche</h3>
           </div>
-          <form @submit.prevent="handleCreateTask" class="p-6">
-            <div class="space-y-4">
+
+          <form @submit.prevent="handleCreateTask" class="p-6 space-y-4">
+            <!-- Informations de base -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Titre -->
               <div>
                 <label class="block text-sm font-medium text-gray-700">Titre</label>
                 <input
                   v-model="newTask.title"
                   type="text"
                   required
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 />
               </div>
+
+              <!-- Type de tâche -->
               <div>
-                <label class="block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  v-model="newTask.description"
-                  rows="3"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                ></textarea>
-              </div>
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Date limite</label>
-                  <input
-                    v-model="newTask.deadline"
-                    type="date"
-                    required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700">Priorité</label>
-                  <select
-                    v-model="newTask.priority"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  >
-                    <option value="low">Basse</option>
-                    <option value="medium">Moyenne</option>
-                    <option value="high">Haute</option>
-                  </select>
-                </div>
+                <label class="block text-sm font-medium text-gray-700">Type</label>
+                <select
+                  v-model="newTask.type"
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                  <option v-for="type in taskTypes" :key="type.value" :value="type.value">
+                    {{ type.label }}
+                  </option>
+                </select>
               </div>
             </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Description</label>
+              <textarea
+                v-model="newTask.description"
+                rows="3"
+                required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              ></textarea>
+            </div>
+
+            <!-- Dates et estimation -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Date limite</label>
+                <input
+                  v-model="newTask.deadline"
+                  type="date"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Estimation (heures)</label>
+                <input
+                  v-model.number="newTask.estimatedHours"
+                  type="number"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Assigner à</label>
+                <select
+                  v-model="newTask.assignedTo"
+                  required
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                  <option value="">Sélectionner un développeur</option>
+                  <option v-for="dev in developers" :key="dev.id" :value="dev.id">
+                    {{ dev.email }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
             <div class="mt-6 flex justify-end space-x-3">
               <button
                 type="button"
