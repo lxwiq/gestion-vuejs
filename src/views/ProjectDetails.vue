@@ -41,7 +41,14 @@ const newTask = ref({
 
 // Récupérer les développeurs pour l'assignation
 async function fetchUsers() {
-  users.value = await db.users.toArray();
+  try {
+    const allUsers = await db.users.toArray();
+    console.log('Utilisateurs chargés:', allUsers); // Pour le débogage
+    users.value = allUsers;
+  } catch (error) {
+    console.error('Erreur lors du chargement des utilisateurs:', error);
+    users.value = [];
+  }
 }
 
 // Vérifier si l'utilisateur actuel est manager de ce projet
@@ -61,6 +68,7 @@ async function loadProjectData() {
     }
 
     await projectStore.fetchProjectTasks(projectId);
+    await fetchUsers();
     await fetchDevelopers();
   } catch (error) {
     console.error('Erreur lors du chargement du projet:', error);
@@ -328,9 +336,12 @@ async function openTaskDetails(task) {
 }
 // fonction pour obtenir les noms des managers
 function getManagerNames(managerIds) {
-  console.log(users.value);
-  if (!managerIds || !users.value || managerIds.length === 0) {
+  if (!managerIds || !Array.isArray(managerIds) || managerIds.length === 0) {
     return 'Aucun manager assigné';
+  }
+
+  if (!users.value || users.value.length === 0) {
+    return 'Chargement des managers...';
   }
 
   const managerEmails = managerIds
@@ -468,7 +479,13 @@ function openNewTaskForm() {
           </div>
           <div class="mt-4 flex items-center">
             <span class="text-sm text-gray-500">
-              Managers : {{ getManagerNames(project.managedBy) }}
+              Managers :
+              <template v-if="users.length > 0">
+                {{ getManagerNames(project.managedBy) }}
+              </template>
+              <template v-else>
+                Chargement...
+              </template>
             </span>
           </div>
         </div>
