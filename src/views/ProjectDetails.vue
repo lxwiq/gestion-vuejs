@@ -288,11 +288,15 @@ async function loadTaskComments(taskId) {
 
 // Gérer l'ajout d'un commentaire
 async function handleAddComment() {
-  if (!newComment.value.trim()) return;
+  try {
+    if (!newComment.value.trim() || !selectedTask.value) return;
 
-  await projectStore.addComment(selectedTaskForComment.value.id, newComment.value);
-  await loadTaskComments(selectedTaskForComment.value.id);
-  newComment.value = '';
+    await projectStore.addComment(selectedTask.value.id, newComment.value);
+    await loadTaskComments(selectedTask.value.id);
+    newComment.value = '';
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout du commentaire:', error);
+  }
 }
 
 // Ouvrir le formulaire de commentaire
@@ -317,10 +321,26 @@ const selectedTask = ref(null);
 const showTaskDetails = ref(false);
 
 // Fonction pour ouvrir les détails d'une tâche
-function openTaskDetails(task) {
+async function openTaskDetails(task) {
   selectedTask.value = { ...task };
   showTaskDetails.value = true;
-  loadTaskComments(task.id);
+  await loadTaskComments(task.id);
+}
+// fonction pour obtenir les noms des managers
+function getManagerNames(managerIds) {
+  console.log(users.value);
+  if (!managerIds || !users.value || managerIds.length === 0) {
+    return 'Aucun manager assigné';
+  }
+
+  const managerEmails = managerIds
+    .map(id => {
+      const user = users.value.find(u => u.id === id);
+      return user ? user.email : null;
+    })
+    .filter(email => email !== null);
+
+  return managerEmails.length > 0 ? managerEmails.join(', ') : 'Aucun manager assigné';
 }
 
 // Fonction pour obtenir le statut formaté
@@ -446,17 +466,10 @@ function openNewTaskForm() {
               </button>
             </div>
           </div>
-          <div class="mt-4 flex items-center space-x-2">
-            <span class="text-sm text-gray-500">Managers :</span>
-            <div class="flex space-x-2">
-              <span
-                v-for="managerId in project.managedBy"
-                :key="managerId"
-                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
-              >
-                {{ users.find(u => u.id === managerId)?.email }}
-              </span>
-            </div>
+          <div class="mt-4 flex items-center">
+            <span class="text-sm text-gray-500">
+              Managers : {{ getManagerNames(project.managedBy) }}
+            </span>
           </div>
         </div>
       </div>

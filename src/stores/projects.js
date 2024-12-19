@@ -32,7 +32,7 @@ export const useProjectStore = defineStore('projects', () => {
         status: projectData.status || 'active',
         priority: projectData.priority || 'medium',
         assignedDevelopers: Array.from(projectData.assignedDevelopers || []),
-        managedBy: [],
+        managedBy: [authStore.currentUser.id],
         createdAt: new Date().toISOString()
       };
 
@@ -65,7 +65,7 @@ export const useProjectStore = defineStore('projects', () => {
   async function toggleProjectManager(projectId, managerId) {
     const project = await db.projects.get(projectId);
     const managers = project.managedBy || [];
-
+    console.log('Managers:', managers);
     if (managers.includes(managerId)) {
       managers.splice(managers.indexOf(managerId), 1);
     } else {
