@@ -2,7 +2,7 @@
   <div class="flex items-center justify-center h-screen">
     <div class="w-[500px]">
       <h2 class="text-3xl font-bold text-center mb-8">
-        {{ isRegisterMode ? "Inscription" : "Connexion" }}
+        {{ isRegisterMode ? 'Inscription' : 'Connexion' }}
       </h2>
 
       <form @submit.prevent="handleSubmit" class="space-y-6">
@@ -53,7 +53,7 @@
           type="submit"
           class="w-full p-3 bg-indigo-600 text-white rounded text-lg font-medium hover:bg-indigo-700"
         >
-          {{ isRegisterMode ? "S'inscrire" : "Se connecter" }}
+          {{ isRegisterMode ? "S'inscrire" : 'Se connecter' }}
         </button>
       </form>
 
@@ -63,7 +63,7 @@
           @click.prevent="isRegisterMode = !isRegisterMode"
           class="text-indigo-600 hover:text-indigo-500"
         >
-          {{ isRegisterMode ? "Déjà inscrit ? Connectez-vous" : "Pas de compte ? Inscrivez-vous" }}
+          {{ isRegisterMode ? 'Déjà inscrit ? Connectez-vous' : 'Pas de compte ? Inscrivez-vous' }}
         </a>
       </p>
     </div>
@@ -71,42 +71,42 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { useAuthStore } from '../stores/auth';
-import { useRouter } from 'vue-router';
+import { ref } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import { useRouter } from 'vue-router'
 
-const router = useRouter();
-const authStore = useAuthStore();
-const isRegisterMode = ref(false);
+const router = useRouter()
+const authStore = useAuthStore()
+const isRegisterMode = ref(false)
 
-const email = ref('');
-const password = ref('');
-const roles = ref([]);
+const email = ref('')
+const password = ref('')
+const roles = ref([])
 
 async function handleSubmit() {
   try {
     const formData = {
       email: email.value,
       password: password.value,
-      roles: isRegisterMode.value ? roles.value : undefined
-    };
+      roles: isRegisterMode.value ? roles.value : undefined,
+    }
 
     if (isRegisterMode.value) {
-      await authStore.register(formData);
+      await authStore.register(formData)
     } else {
       await authStore.login({
         email: email.value,
-        password: password.value
-      });
+        password: password.value,
+      })
     }
 
     if (authStore.currentUser?.roles.includes('manager')) {
-      router.push('/manager-dashboard');
+      router.push('/manager-dashboard')
     } else {
-      router.push('/developer-dashboard');
+      router.push('/developer-dashboard')
     }
   } catch (error) {
-    alert(error.message);
+    alert(error.message)
   }
 }
 </script>

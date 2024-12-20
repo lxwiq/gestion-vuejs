@@ -1,35 +1,29 @@
-# gestion-vuejs
+# Gestion de Projets Vue.js
 
-This template should help get you started developing with Vue 3 in Vite.
+## Description
 
-## Recommended IDE Setup
+Une application web de gestion de projets développée avec Vue.js 3, permettant aux managers et développeurs de collaborer efficacement sur des projets. L'application offre une interface intuitive pour la gestion des tâches, le suivi de l'avancement et la communication entre les membres de l'équipe.
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Fonctionnalités Principales
 
-## Customize configuration
+### Pour les Managers
+- Création et gestion de projets
+- Attribution des tâches aux développeurs
+- Suivi de l'avancement des projets
+- Validation des tâches complétées
+- Vue d'ensemble des statistiques
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+### Pour les Développeurs
+- Vue personnalisée des tâches assignées
+- Mise à jour du statut des tâches
+- Communication via système de commentaires
+- Suivi de leur progression
 
-## Project Setup
+## Technologies Utilisées
 
-```sh
-npm install
-```
+- Vue.js 3 avec Composition API
+- Pinia pour la gestion d'état
+- Dexie.js pour la base de données locale
+- Tailwind CSS pour le style
+- Vue Router pour la navigation
 
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-npm run lint
-```

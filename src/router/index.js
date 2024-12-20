@@ -1,13 +1,13 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import { useAuthStore } from '../stores/auth';
-import LoginForm from '../components/LoginForm.vue';
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import LoginForm from '../components/LoginForm.vue'
 
 const routes = [
   {
     path: '/',
     name: 'login',
     component: LoginForm,
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false },
   },
   {
     path: '/manager-dashboard',
@@ -15,8 +15,8 @@ const routes = [
     component: () => import('../views/ManagerDashboard.vue'),
     meta: {
       requiresAuth: true,
-      requiresManager: true
-    }
+      requiresManager: true,
+    },
   },
   {
     path: '/developer-dashboard',
@@ -24,42 +24,42 @@ const routes = [
     component: () => import('../views/DeveloperDashboard.vue'),
     meta: {
       requiresAuth: true,
-      requiresDeveloper: true
-    }
+      requiresDeveloper: true,
+    },
   },
   {
     path: '/projects/:id',
     name: 'project-details',
     component: () => import('../views/ProjectDetails.vue'),
     meta: {
-      requiresAuth: true
-    }
-  }
-];
+      requiresAuth: true,
+    },
+  },
+]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
-});
+  routes,
+})
 
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore();
+  const authStore = useAuthStore()
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next('/');
+    next('/')
   } else if (to.meta.requiresManager && !authStore.currentUser?.roles.includes('manager')) {
-    next('/developer-dashboard');
+    next('/developer-dashboard')
   } else if (to.meta.requiresDeveloper && !authStore.currentUser?.roles.includes('developer')) {
-    next('/manager-dashboard');
+    next('/manager-dashboard')
   } else if (to.path === '/' && authStore.isAuthenticated) {
     if (authStore.currentUser?.roles.includes('manager')) {
-      next('/manager-dashboard');
+      next('/manager-dashboard')
     } else {
-      next('/developer-dashboard');
+      next('/developer-dashboard')
     }
   } else {
-    next();
+    next()
   }
-});
+})
 
-export default router;
+export default router

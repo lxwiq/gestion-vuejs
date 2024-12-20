@@ -1,23 +1,21 @@
-import { defineStore } from 'pinia';
-import { db } from '../db/db';
-import { ref, computed } from 'vue';
-import { useAuthStore } from './auth';
+import { defineStore } from 'pinia'
+import { db } from '../db/db'
+import { ref, computed } from 'vue'
+import { useAuthStore } from './auth'
 
 export const useProjectStore = defineStore('projects', () => {
-  const authStore = useAuthStore();
-  const projects = ref([]);
-  const tasks = ref([]);
+  const authStore = useAuthStore()
+  const projects = ref([])
+  const tasks = ref([])
 
   // Projets gérés par le manager connecté
   const managedProjects = computed(() => {
-    return projects.value.filter(project =>
-      project.managedBy.includes(authStore.currentUser?.id)
-    );
-  });
+    return projects.value.filter((project) => project.managedBy.includes(authStore.currentUser?.id))
+  })
 
   // Récupérer tous les projets
   async function fetchProjects() {
-    projects.value = await db.projects.toArray();
+    projects.value = await db.projects.toArray()
   }
 
   // Créer un nouveau projet
@@ -33,68 +31,65 @@ export const useProjectStore = defineStore('projects', () => {
         priority: projectData.priority || 'medium',
         assignedDevelopers: Array.from(projectData.assignedDevelopers || []),
         managedBy: [authStore.currentUser.id],
-        createdAt: new Date().toISOString()
-      };
+        createdAt: new Date().toISOString(),
+      }
 
-      const projectToStore = JSON.parse(JSON.stringify(newProject));
+      const projectToStore = JSON.parse(JSON.stringify(newProject))
 
-      await db.projects.add(projectToStore);
-      await fetchProjects();
-      return newProject.id;
+      await db.projects.add(projectToStore)
+      await fetchProjects()
+      return newProject.id
     } catch (error) {
-      console.error('Erreur lors de la création du projet:', error);
-      throw error;
+      console.error('Erreur lors de la création du projet:', error)
+      throw error
     }
   }
 
   // Modifier un projet
   async function updateProject(projectId, updates) {
-    await db.projects.update(projectId, updates);
-    await fetchProjects();
+    await db.projects.update(projectId, updates)
+    await fetchProjects()
   }
 
   // Supprimer un projet
   async function deleteProject(projectId) {
     // Supprimer d'abord toutes les tâches associées
-    await db.tasks.where('projectId').equals(projectId).delete();
-    await db.projects.delete(projectId);
-    await fetchProjects();
+    await db.tasks.where('projectId').equals(projectId).delete()
+    await db.projects.delete(projectId)
+    await fetchProjects()
   }
 
   // Ajouter/Retirer un manager au projet
   async function toggleProjectManager(projectId, managerId) {
-    const project = await db.projects.get(projectId);
-    const managers = project.managedBy || [];
-    console.log('Managers:', managers);
+    const project = await db.projects.get(projectId)
+    const managers = project.managedBy || []
+    console.log('Managers:', managers)
     if (managers.includes(managerId)) {
-      managers.splice(managers.indexOf(managerId), 1);
+      managers.splice(managers.indexOf(managerId), 1)
     } else {
-      managers.push(managerId);
+      managers.push(managerId)
     }
 
-    await db.projects.update(projectId, { managedBy: managers });
-    await fetchProjects();
+    await db.projects.update(projectId, { managedBy: managers })
+    await fetchProjects()
   }
 
   // Récupérer les tâches d'un projet
   async function fetchProjectTasks(projectId) {
     try {
       if (!projectId) {
-        console.error('ID du projet manquant');
-        return [];
+        console.error('ID du projet manquant')
+        return []
       }
 
-      const projectTasks = await db.tasks
-        .where('projectId')
-        .equals(projectId)
-        .toArray();
+      const projectTasks = await db.tasks.where('projectId').equals(projectId).toArray()
 
-      tasks.value = projectTasks;
-      return projectTasks;
+      tasks.value = projectTasks
+      return projectTasks
     } catch (error) {
-      console.error('Erreur lors du chargement des tâches:', error);
-      tasks.value = [];
-      return [];
+      console.error('Erreur lors du chargement des tâches:', error)
+      tasks.value = []
+      return []
     }
   }
 
@@ -112,30 +107,30 @@ export const useProjectStore = defineStore('projects', () => {
         deadline: taskData.deadline,
         priority: taskData.priority || 'medium',
         estimatedHours: taskData.estimatedHours || 0,
-        type: taskData.type || 'feature'
-      };
+        type: taskData.type || 'feature',
+      }
 
-      await db.tasks.add(newTask);
-      const updatedTasks = await fetchProjectTasks(taskData.projectId);
-      return newTask.id;
+      await db.tasks.add(newTask)
+      const updatedTasks = await fetchProjectTasks(taskData.projectId)
+      return newTask.id
     } catch (error) {
-      console.error('Erreur lors de la création de la tâche:', error);
-      throw error;
+      console.error('Erreur lors de la création de la tâche:', error)
+      throw error
     }
   }
 
   // Modifier une tâche
   async function updateTask(taskId, updates) {
-    const task = await db.tasks.get(taskId);
-    await db.tasks.update(taskId, updates);
-    await fetchProjectTasks(task.projectId);
+    const task = await db.tasks.get(taskId)
+    await db.tasks.update(taskId, updates)
+    await fetchProjectTasks(task.projectId)
   }
 
   // Supprimer une tâche
   async function deleteTask(taskId) {
-    const task = await db.tasks.get(taskId);
-    await db.tasks.delete(taskId);
-    await fetchProjectTasks(task.projectId);
+    const task = await db.tasks.get(taskId)
+    await db.tasks.delete(taskId)
+    await fetchProjectTasks(task.projectId)
   }
 
   // Affecter/Désaffecter un développeur à une tâche
@@ -143,93 +138,91 @@ export const useProjectStore = defineStore('projects', () => {
     const updates = {
       assignedTo: developerId || null,
       // S'assurer que le statut est correctement mis à jour
-      status: developerId ? 'in_progress' : 'pending'
-    };
+      status: developerId ? 'in_progress' : 'pending',
+    }
 
-    const task = await db.tasks.get(taskId);
+    const task = await db.tasks.get(taskId)
     // Ne pas changer le statut si la tâche est déjà validée
     if (task.status !== 'validated') {
-      await db.tasks.update(taskId, updates);
-      await fetchProjectTasks(task.projectId);
+      await db.tasks.update(taskId, updates)
+      await fetchProjectTasks(task.projectId)
     }
   }
 
   // Valider une tâche
   async function validateTask(taskId) {
     try {
-      const task = await db.tasks.get(taskId);
+      const task = await db.tasks.get(taskId)
       if (!task.assignedTo) {
-        throw new Error('Impossible de valider une tâche non assignée');
+        throw new Error('Impossible de valider une tâche non assignée')
       }
 
-      await db.tasks.update(taskId, { status: 'validated' });
+      await db.tasks.update(taskId, { status: 'validated' })
 
       // Mettre à jour toutes les données nécessaires
       await Promise.all([
         fetchProjects(),
         fetchProjectTasks(task.projectId),
-        fetchDeveloperTasks(task.assignedTo)
-      ]);
+        fetchDeveloperTasks(task.assignedTo),
+      ])
     } catch (error) {
-      console.error('Erreur lors de la validation de la tâche:', error);
-      throw error;
+      console.error('Erreur lors de la validation de la tâche:', error)
+      throw error
     }
   }
 
   // Obtenir les statistiques d'un projet
   const getProjectStats = computed(() => (projectId) => {
-    const projectTasks = tasks.value.filter(task => task.projectId === projectId);
-    const total = projectTasks.length;
-    const completed = projectTasks.filter(task => task.status === 'validated').length;
-    const overdue = projectTasks.filter(task => {
-      return new Date(task.deadline) < new Date() && task.status !== 'validated';
-    }).length;
+    const projectTasks = tasks.value.filter((task) => task.projectId === projectId)
+    const total = projectTasks.length
+    const completed = projectTasks.filter((task) => task.status === 'validated').length
+    const overdue = projectTasks.filter((task) => {
+      return new Date(task.deadline) < new Date() && task.status !== 'validated'
+    }).length
 
     return {
       total,
       completed,
       overdue,
       progress: total ? Math.round((completed / total) * 100) : 0,
-      atRisk: overdue > 0
-    };
-  });
+      atRisk: overdue > 0,
+    }
+  })
 
   // Ajouter une nouvelle fonction pour charger toutes les tâches d'un développeur
   async function fetchDeveloperTasks(developerId) {
     try {
-      console.log('Chargement des tâches pour le développeur:', developerId);
+      console.log('Chargement des tâches pour le développeur:', developerId)
 
       // Récupérer tous les projets
-      const allProjects = await db.projects.toArray();
+      const allProjects = await db.projects.toArray()
 
       // Filtrer les projets après les avoir récupérés
-      const developerProjects = allProjects.filter(project =>
-        project.assignedDevelopers &&
-        Array.isArray(project.assignedDevelopers) &&
-        project.assignedDevelopers.includes(developerId)
-      );
+      const developerProjects = allProjects.filter(
+        (project) =>
+          project.assignedDevelopers &&
+          Array.isArray(project.assignedDevelopers) &&
+          project.assignedDevelopers.includes(developerId),
+      )
 
-      console.log('Projets trouvés:', developerProjects);
-      projects.value = developerProjects;
+      console.log('Projets trouvés:', developerProjects)
+      projects.value = developerProjects
 
       // Récupérer toutes les tâches assignées au développeur
-      const developerTasks = await db.tasks
-        .where('assignedTo')
-        .equals(developerId)
-        .toArray();
+      const developerTasks = await db.tasks.where('assignedTo').equals(developerId).toArray()
 
-      console.log('Tâches trouvées:', developerTasks);
-      tasks.value = developerTasks;
+      console.log('Tâches trouvées:', developerTasks)
+      tasks.value = developerTasks
 
       return {
         projects: developerProjects,
-        tasks: developerTasks
-      };
+        tasks: developerTasks,
+      }
     } catch (error) {
-      console.error('Erreur lors de la récupération des données:', error);
-      projects.value = [];
-      tasks.value = [];
-      throw error;
+      console.error('Erreur lors de la récupération des données:', error)
+      projects.value = []
+      tasks.value = []
+      throw error
     }
   }
 
@@ -239,58 +232,54 @@ export const useProjectStore = defineStore('projects', () => {
       taskId,
       userId: authStore.currentUser.id,
       content,
-      createdAt: new Date().toISOString()
-    };
+      createdAt: new Date().toISOString(),
+    }
 
-    await db.comments.add(comment);
-    return comment;
+    await db.comments.add(comment)
+    return comment
   }
 
   // Récupérer les commentaires d'une tâche
   async function fetchTaskComments(taskId) {
-    return await db.comments
-      .where('taskId')
-      .equals(taskId)
-      .reverse()
-      .sortBy('createdAt');
+    return await db.comments.where('taskId').equals(taskId).reverse().sortBy('createdAt')
   }
 
   // Marquer une tâche comme complétée (pour les développeurs)
   async function completeTask(taskId) {
     try {
-      const task = await db.tasks.get(taskId);
-      if (!task) throw new Error('Tâche non trouvée');
+      const task = await db.tasks.get(taskId)
+      if (!task) throw new Error('Tâche non trouvée')
 
       await db.tasks.update(taskId, {
-        status: 'completed'
-      });
+        status: 'completed',
+      })
 
       // Mettre à jour toutes les données nécessaires
       await Promise.all([
         fetchProjects(),
         fetchProjectTasks(task.projectId),
-        fetchDeveloperTasks(task.assignedTo)
-      ]);
+        fetchDeveloperTasks(task.assignedTo),
+      ])
 
-      return true;
+      return true
     } catch (error) {
-      console.error('Erreur lors de la complétion de la tâche:', error);
-      throw error;
+      console.error('Erreur lors de la complétion de la tâche:', error)
+      throw error
     }
   }
 
   async function updateTaskStatus(taskId, status) {
     try {
-      const task = await db.tasks.get(taskId);
+      const task = await db.tasks.get(taskId)
       if (!task) {
-        throw new Error('Tâche non trouvée');
+        throw new Error('Tâche non trouvée')
       }
 
-      await db.tasks.update(taskId, { status });
-      await fetchProjectTasks(task.projectId);
+      await db.tasks.update(taskId, { status })
+      await fetchProjectTasks(task.projectId)
     } catch (error) {
-      console.error('Erreur lors de la mise à jour du statut:', error);
-      throw error;
+      console.error('Erreur lors de la mise à jour du statut:', error)
+      throw error
     }
   }
 
@@ -314,6 +303,6 @@ export const useProjectStore = defineStore('projects', () => {
     addComment,
     fetchTaskComments,
     completeTask,
-    updateTaskStatus
-  };
-});
+    updateTaskStatus,
+  }
+})

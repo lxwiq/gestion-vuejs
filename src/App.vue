@@ -1,8 +1,8 @@
 <script setup>
-import { useAuthStore } from './stores/auth';
-import Navbar from './components/Navbar.vue';
+import { useAuthStore } from './stores/auth'
+import Navbar from './components/Navbar.vue'
 
-const authStore = useAuthStore();
+const authStore = useAuthStore()
 </script>
 
 <template>

@@ -1,14 +1,15 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { useProjectStore } from '../stores/projects';
-import { useAuthStore } from '../stores/auth';
-import { db } from '../db/db';
+import { ref, onMounted, computed } from 'vue'
+import { useProjectStore } from '../stores/projects'
+import { useAuthStore } from '../stores/auth'
+import { db } from '../db/db'
+import ProjectCard from '../components/ProjectCard.vue'
 
-const projectStore = useProjectStore();
-const authStore = useAuthStore();
+const projectStore = useProjectStore()
+const authStore = useAuthStore()
 
-const showNewProjectForm = ref(false);
-const developers = ref([]);
+const showNewProjectForm = ref(false)
+const developers = ref([])
 const newProject = ref({
   name: '',
   description: '',
@@ -16,48 +17,48 @@ const newProject = ref({
   endDate: '',
   status: 'active',
   priority: 'medium',
-  assignedDevelopers: []
-});
-console.log('ik');
+  assignedDevelopers: [],
+})
+console.log('ik')
 onMounted(async () => {
   try {
-    console.log('Début du chargement des projets');
-    await projectStore.fetchProjects();
-    console.log('Projets chargés:', projectStore.projects);
+    console.log('Début du chargement des projets')
+    await projectStore.fetchProjects()
+    console.log('Projets chargés:', projectStore.projects)
     const dev = await db.users
       .orderBy('email')
       .toArray()
-      .then(users => users.filter(user => user.roles.includes('developer')));
-    console.log(dev);
+      .then((users) => users.filter((user) => user.roles.includes('developer')))
+    console.log(dev)
 
-    developers.value = dev;
+    developers.value = dev
   } catch (error) {
-    console.error('Erreur lors du chargement:', error);
+    console.error('Erreur lors du chargement:', error)
   }
-});
+})
 
 const isManager = computed(() => {
-  return authStore.currentUser?.roles.includes('manager');
-});
+  return authStore.currentUser?.roles.includes('manager')
+})
 
 async function handleCreateProject() {
   try {
-    const startDate = new Date(newProject.value.startDate).toISOString();
-    const endDate = new Date(newProject.value.endDate).toISOString();
+    const startDate = new Date(newProject.value.startDate).toISOString()
+    const endDate = new Date(newProject.value.endDate).toISOString()
 
     if (new Date(endDate) < new Date(startDate)) {
-      throw new Error('La date de fin doit être postérieure à la date de début');
+      throw new Error('La date de fin doit être postérieure à la date de début')
     }
 
     const projectData = {
       ...newProject.value,
       startDate,
       endDate,
-      assignedDevelopers: newProject.value.assignedDevelopers
-    };
+      assignedDevelopers: newProject.value.assignedDevelopers,
+    }
 
-    await projectStore.createProject(projectData);
-    showNewProjectForm.value = false;
+    await projectStore.createProject(projectData)
+    showNewProjectForm.value = false
     newProject.value = {
       name: '',
       description: '',
@@ -65,15 +66,15 @@ async function handleCreateProject() {
       endDate: '',
       status: 'active',
       priority: 'medium',
-      assignedDevelopers: []
-    };
+      assignedDevelopers: [],
+    }
   } catch (error) {
-    alert(error.message);
+    alert(error.message)
   }
 }
 
 async function handleToggleManager(projectId) {
-  await projectStore.toggleProjectManager(projectId, authStore.currentUser.id);
+  await projectStore.toggleProjectManager(projectId, authStore.currentUser.id)
 }
 </script>
 
@@ -180,7 +181,7 @@ async function handleToggleManager(projectId) {
                   :value="dev.id"
                   v-model="newProject.assignedDevelopers"
                   class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                >
+                />
                 <label :for="'dev-' + dev.id" class="ml-3 flex flex-col">
                   <span class="text-sm font-medium text-gray-700">
                     {{ dev.firstName }} {{ dev.lastName }}
@@ -218,72 +219,14 @@ async function handleToggleManager(projectId) {
 
       <!-- Liste des projets -->
       <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <div
+        <ProjectCard
           v-for="project in projectStore.projects"
           :key="project.id"
-          class="bg-white overflow-hidden shadow rounded-lg"
-        >
-          <div class="px-4 py-5 sm:p-6">
-            <div class="flex justify-between items-start">
-              <h3 class="text-lg font-medium text-gray-900">
-                {{ project.name }}
-              </h3>
-              <div class="flex space-x-2">
-                <button
-                  @click="handleToggleManager(project.id)"
-                  :class="[
-                    'flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors duration-200',
-                    project.managedBy?.includes(authStore.currentUser.id)
-                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  ]"
-                >
-                  <span class="mr-1">
-                    <i class="fas fa-user-shield" :class="{
-                      'text-green-600': project.managedBy?.includes(authStore.currentUser.id),
-                      'text-gray-500': !project.managedBy?.includes(authStore.currentUser.id)
-                    }"></i>
-                  </span>
-                  {{ project.managedBy?.includes(authStore.currentUser.id) ? 'Je gère ce projet' : 'Prendre en charge' }}
-                </button>
-              </div>
-            </div>
-            <p class="mt-1 text-sm text-gray-500">
-              {{ project.description }}
-            </p>
-            <div class="mt-4">
-              <div class="flex justify-between text-sm">
-                <span>Progression</span>
-                <span>{{ projectStore.getProjectStats(project.id).progress }}%</span>
-              </div>
-              <div class="mt-1 relative">
-                <div class="h-2 bg-gray-200 rounded">
-                  <div
-                    class="h-2 bg-indigo-600 rounded"
-                    :style="{ width: `${projectStore.getProjectStats(project.id).progress}%` }"
-                  ></div>
-                </div>
-              </div>
-              <div class="mt-2 flex justify-between text-sm">
-                <span>Tâches: {{ projectStore.getProjectStats(project.id).completed }}/{{ projectStore.getProjectStats(project.id).total }}</span>
-                <span
-                  v-if="projectStore.getProjectStats(project.id).atRisk"
-                  class="text-red-600"
-                >
-                  {{ projectStore.getProjectStats(project.id).overdue }} en retard
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="bg-gray-50 px-4 py-4 sm:px-6">
-            <router-link
-              :to="`/projects/${project.id}`"
-              class="text-indigo-600 hover:text-indigo-900"
-            >
-              Voir les détails
-            </router-link>
-          </div>
-        </div>
+          :project="project"
+          :current-user-id="authStore.currentUser.id"
+          :show-manager-controls="true"
+          @toggle-manager="handleToggleManager"
+        />
       </div>
     </div>
   </div>
